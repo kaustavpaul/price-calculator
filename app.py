@@ -5,8 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 import uuid
-from typing import Dict, List, Optional
-import json
+from typing import Dict
 
 # =============================
 # Streamlit Page Configuration
@@ -558,4 +557,4 @@ def analytics_tab():
 # App Entry Point
 # =============================
 if __name__ == "__main__":
-    main() 
+    main()

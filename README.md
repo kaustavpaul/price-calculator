@@ -23,7 +23,7 @@ A modern, interactive price calculator built with Streamlit that helps calculate
 
 3. **Run the application**:
    ```bash
-   streamlit run streamlit_app.py
+   streamlit run app.py
    ```
 
 4. **Open your browser** and navigate to the URL shown in the terminal (usually `http://localhost:8501`)
@@ -106,7 +106,7 @@ Tax is applied to the subtotal of all items:
 
 ### Adding New Currencies
 To add support for additional currencies:
-1. Modify the `convert_currency` function in `streamlit_app.py`
+1. Modify the `convert_currency` function in `app.py`
 2. Update currency selection dropdowns
 3. Add exchange rate settings
 
@@ -125,7 +125,7 @@ The app uses SQLite by default. To use a different database:
 
 1. **Port already in use**:
    ```bash
-   streamlit run streamlit_app.py --server.port 8502
+   streamlit run app.py --server.port 8502
    ```
 
 2. **Database errors**: Delete `price_calculator.db` to reset the database
