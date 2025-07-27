@@ -2,6 +2,8 @@
 
 A modern, interactive price calculator built with Streamlit that helps calculate final prices including tax, shipping, import costs, and profit margins with multi-currency support.
 
+![Price Calculator Demo](screenshots/demo.gif)
+
 ## Features
 
 - **Multi-Currency Support**: USD and INR with real-time exchange rate conversion
@@ -9,24 +11,51 @@ A modern, interactive price calculator built with Streamlit that helps calculate
 - **Flexible Margins**: Percentage-based or fixed amount margins
 - **Real-time Calculations**: Instant price updates as you modify inputs
 - **Database Storage**: SQLite database for persistent data storage
+- **Advanced Data Grid**: 
+  - Sortable and filterable columns
+  - Multi-select row operations
+  - Pagination for large datasets
+  - Customizable column widths
 - **Analytics Dashboard**: Interactive charts and statistics
 - **Modern UI**: Clean, responsive interface with Streamlit
+  - Tab navigation now uses button-style tabs with clear active/inactive states
+  - Glassmorphism and animation effects for a polished look
+
+## Technical Requirements
+
+- Python 3.9 or higher
+- Modern web browser (Chrome, Firefox, Safari, or Edge)
+- 512MB RAM minimum
+- Internet connection for currency exchange rates (optional)
 
 ## Installation
 
 1. **Clone or download the project files**
 
-2. **Install dependencies**:
+2. **Create and activate a virtual environment** (recommended):
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows, use: venv\Scripts\activate
+   ```
+
+3. **Install dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
+   
+   Required packages:
+   - streamlit
+   - streamlit-aggrid
+   - pandas
+   - plotly
+   - sqlite3 (included with Python)
 
-3. **Run the application**:
+4. **Run the application**:
    ```bash
    streamlit run app.py
    ```
 
-4. **Open your browser** and navigate to the URL shown in the terminal (usually `http://localhost:8501`)
+5. **Open your browser** and navigate to the URL shown in the terminal (usually `http://localhost:8501`)
 
 ## Usage
 
@@ -37,9 +66,17 @@ A modern, interactive price calculator built with Streamlit that helps calculate
   - Import costs (optional)
   - Profit margin (percentage or fixed amount)
   - Final currency selection
-- **View Items**: See all added items with calculated final prices
-- **Delete Items**: Remove individual items as needed
-- **Summary**: View subtotal, tax, and total calculations
+- **Interactive Items List**:
+  - Sort any column by clicking header
+  - Filter items using the column filters
+  - Select multiple items for bulk operations
+  - Adjustable column widths
+  - Paginated view for better performance
+- **Bulk Operations**:
+  - Select multiple items using checkboxes
+  - Delete selected items in one click
+  - Filter and select for batch operations
+- **Summary**: View subtotal, tax, and total calculations with real-time updates
 
 ### Settings (Sidebar)
 - **Exchange Rate**: Update USD to INR conversion rate
@@ -47,18 +84,28 @@ A modern, interactive price calculator built with Streamlit that helps calculate
 - **Clear All**: Remove all items from the database
 
 ### Database Tab
-- **View Records**: See all stored items in a table format
-- **Export Data**: Download items as CSV file
-- **Settings**: View current application settings
+- **View Records**: 
+  - Comprehensive data grid with all stored items
+  - Sort and filter capabilities
+  - Responsive table with horizontal scrolling
+  - Formatted number displays with proper precision
+- **Export Data**: Download filtered or complete data as CSV file
+- **Settings**: View and modify application settings
 
 ### Analytics Tab
-- **Summary Metrics**: Total items, value, average price, and margin
-- **Interactive Charts**:
+**Summary Metrics**: Total items, value, average price, and margin
+**Interactive Charts**:
   - Currency distribution pie chart
   - Price range histogram
   - Margin type distribution
   - Recent items timeline
-- **Statistics**: Detailed price and margin statistics
+**Statistics**: Detailed price and margin statistics
+
+### Tab Navigation (UI Update)
+- Tabs are now styled as individual buttons for improved clarity and usability
+- The active tab features a lighter background and bold, dark font
+- Inactive tabs have a darker background with lighter font
+- Smooth transitions and glass effect applied for a modern look
 
 ## Database Schema
 
@@ -111,7 +158,11 @@ To add support for additional currencies:
 3. Add exchange rate settings
 
 ### Styling
-The app uses custom CSS for styling. Modify the CSS section in the main function to customize the appearance.
+The app uses custom CSS for styling, including:
+- Glassmorphism effects
+- Animated transitions
+- Button-style tab navigation (see `app.py` CSS section)
+Modify the CSS section in the main function to further customize the appearance.
 
 ### Database
 The app uses SQLite by default. To use a different database:

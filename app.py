@@ -26,31 +26,163 @@ st.set_page_config(
 # =============================
 st.markdown("""
 <style>
+    /* Glass Effect and Animations */
+    .glass-effect {
+        background: rgba(255, 255, 255, 0.7) !important;
+        backdrop-filter: blur(10px) !important;
+        border: 1px solid rgba(255, 255, 255, 0.18) !important;
+        border-radius: 10px !important;
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37) !important;
+    }
+    
+    .slide-in {
+        animation: slideIn 0.5s ease-out;
+    }
+    
+    .fade-in {
+        animation: fadeIn 0.5s ease-out;
+    }
+    
+    .scale-in {
+        animation: scaleIn 0.3s ease-out;
+    }
+    
+    @keyframes slideIn {
+        from {
+            transform: translateX(-20px);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    
+    @keyframes scaleIn {
+        from {
+            transform: scale(0.95);
+            opacity: 0;
+        }
+        to {
+            transform: scale(1);
+            opacity: 1;
+        }
+    }
+    
+    /* Header Styling */
     .main-header {
         text-align: center;
         color: #1f77b4;
         margin-bottom: 2rem;
+        animation: fadeIn 1s ease-out;
     }
+    
+    /* Card Styling */
     .metric-card {
-        background-color: #f0f2f6;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border-left: 4px solid #1f77b4;
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(10px);
+        padding: 1.2rem;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.2);
+        transition: all 0.3s ease;
+        animation: scaleIn 0.5s ease-out;
     }
+    
+    .metric-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.25);
+    }
+    
     .summary-box {
-        background-color: #e8f4fd;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border: 1px solid #1f77b4;
+        background: rgba(232, 244, 253, 0.8);
+        backdrop-filter: blur(10px);
+        padding: 1.2rem;
+        border-radius: 10px;
+        border: 1px solid rgba(31, 119, 180, 0.2);
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+        transition: all 0.3s ease;
+        animation: slideIn 0.5s ease-out;
     }
+    
+    /* Button Styling */
     .stButton > button {
         width: 100%;
         margin-top: 1rem;
+        background: rgba(31, 119, 180, 0.8) !important;
+        backdrop-filter: blur(5px) !important;
+        border: 1px solid rgba(255, 255, 255, 0.18) !important;
+        border-radius: 8px !important;
+        box-shadow: 0 4px 16px 0 rgba(31, 38, 135, 0.2) !important;
+        transition: all 0.3s ease !important;
     }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 8px 24px 0 rgba(31, 38, 135, 0.25) !important;
+    }
+    
+    /* Input Styling */
     .currency-input {
         display: flex;
         align-items: center;
         gap: 0.5rem;
+        animation: fadeIn 0.5s ease-out;
+    }
+    
+    /* Streamlit Elements Override */
+    .stSelectbox, .stNumberInput {
+        animation: fadeIn 0.5s ease-out;
+    }
+    
+    .streamlit-expanderHeader {
+        background: rgba(255, 255, 255, 0.7) !important;
+        backdrop-filter: blur(10px) !important;
+        border-radius: 8px !important;
+    }
+    
+    /* AG Grid Styling */
+    .ag-theme-streamlit {
+        --ag-background-color: rgba(255, 255, 255, 0.8) !important;
+        --ag-header-background-color: rgba(240, 242, 246, 0.9) !important;
+        --ag-odd-row-background-color: rgba(249, 250, 251, 0.6) !important;
+        --ag-row-hover-color: rgba(232, 244, 253, 0.8) !important;
+        animation: fadeIn 0.5s ease-out;
+    }
+    
+    /* Tab Styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background: transparent;
+        padding: 0.5rem;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 6px;
+        transition: all 0.3s ease;
+        background: rgba(31, 119, 180, 0.8) !important;
+        color: rgba(255, 255, 255, 0.9) !important;
+        padding: 8px 16px !important;
+        border: 1px solid rgba(255, 255, 255, 0.18) !important;
+        backdrop-filter: blur(5px) !important;
+        box-shadow: 0 4px 16px 0 rgba(31, 38, 135, 0.2) !important;
+    }
+    
+    .stTabs [data-baseweb="tab"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px 0 rgba(31, 38, 135, 0.25) !important;
+    }
+    
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        background: rgba(255, 255, 255, 0.9) !important;
+        color: rgba(31, 119, 180, 1) !important;
+        font-weight: 600 !important;
+        box-shadow: 0 4px 16px 0 rgba(31, 38, 135, 0.15) !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -295,8 +427,8 @@ def main():
     # Initialize database on first run
     if 'db_initialized' not in st.session_state:
         st.session_state.db_initialized = init_database()
-    st.markdown('<h1 class="main-header">🧮 Price Calculator</h1>', unsafe_allow_html=True)
-    st.markdown('<p style="text-align: center; color: #666;">Calculate prices with tax, shipping, and import costs</p>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header slide-in">🧮 Price Calculator</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="fade-in" style="text-align: center; color: #666; animation-delay: 0.3s;">Calculate prices with tax, shipping, and import costs</p>', unsafe_allow_html=True)
     # Sidebar for settings
     with st.sidebar:
         st.header("⚙️ Settings")
@@ -444,7 +576,13 @@ def calculator_tab():
             rowHeight=35,
             enableRangeSelection=True,
             pagination=True,
-            paginationAutoPageSize=True
+            paginationAutoPageSize=True,
+            animateRows=True,
+            rowClass='fade-in',
+            suppressMovableColumns=False,
+            enableCellTextSelection=True,
+            overlayLoadingTemplate='<span class="scale-in">Loading...</span>',
+            overlayNoRowsTemplate='<span class="fade-in">No records found</span>'
         )
         
         grid_options = gb.build()
