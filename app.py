@@ -1,3 +1,6 @@
+# =============================
+# Imports
+# =============================
 import streamlit as st
 import sqlite3
 import pandas as pd
@@ -6,6 +9,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 import uuid
 from typing import Dict
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 
 # =============================
 # Streamlit Page Configuration
@@ -329,7 +333,7 @@ def main():
                 st.success("All items cleared!")
                 st.rerun()
     # Main content tabs
-    tab1, tab2, tab3 = st.tabs(["📝 Calculator", "📊 Database", "📈 Analytics"])
+    tab1, tab2, tab3 = st.tabs(["📝 Item Calculation", "📊 Database", "📈 Analytics"])
     with tab1:
         calculator_tab()
     with tab2:
@@ -338,128 +342,165 @@ def main():
         analytics_tab()
 
 # =============================
-# Calculator Tab
+# Item Calculation Tab
 # =============================
 def calculator_tab():
     """
-    Tab for adding new items and viewing the item list and summary.
+    Item Calculation tab: Add new items, view item list, and see summary.
+    Organized into three vertical sections for clarity.
     """
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        st.subheader("➕ Add New Item")
-        # Item form
-        with st.form("item_form"):
-            item_name = st.text_input("Item Name", placeholder="Enter item name")
-            # Price input
-            price_col1, price_col2 = st.columns([3, 1])
-            with price_col1:
-                item_price = st.number_input("Item Price", min_value=0.0, step=0.01, format="%.2f")
-            with price_col2:
-                price_currency = st.selectbox("Currency", ["USD", "INR"], key="price_currency")
-            # Shipping input
-            ship_col1, ship_col2 = st.columns([3, 1])
-            with ship_col1:
-                shipping_cost = st.number_input("Shipping Cost", min_value=0.0, step=0.01, format="%.2f", value=0.0)
-            with ship_col2:
-                shipping_currency = st.selectbox("Currency", ["USD", "INR"], key="shipping_currency")
-            # Import cost input
-            import_col1, import_col2 = st.columns([3, 1])
-            with import_col1:
-                import_cost = st.number_input("Import Cost", min_value=0.0, step=0.01, format="%.2f", value=0.0)
-            with import_col2:
-                import_currency = st.selectbox("Currency", ["USD", "INR"], key="import_currency")
-            # Margin input
-            margin_col1, margin_col2 = st.columns([3, 1])
-            with margin_col1:
-                margin = st.number_input("Margin", min_value=0.0, step=0.01, format="%.2f", value=0.0)
-            with margin_col2:
-                margin_type = st.selectbox("Type", ["%", "USD", "INR"], key="margin_type")
-            # Final currency
-            final_currency = st.selectbox("Final Price Currency", ["USD", "INR"])
-            # Submit button
-            submitted = st.form_submit_button("Add Item", type="primary")
-            if submitted:
-                if not item_name or item_price <= 0:
-                    st.error("Please enter a valid item name and price!")
-                else:
-                    # Calculate final price
-                    settings = get_settings()
-                    item_data = {
-                        'id': str(uuid.uuid4()),
-                        'name': item_name,
-                        'price': item_price,
-                        'price_currency': price_currency,
-                        'shipping': shipping_cost,
-                        'shipping_currency': shipping_currency,
-                        'import_cost': import_cost,
-                        'import_currency': import_currency,
-                        'margin': margin,
-                        'margin_type': margin_type,
-                        'final_currency': final_currency
-                    }
-                    final_price = calculate_final_price(item_data, settings)
-                    item_data['final_price'] = final_price
-                    # Add to database
-                    if add_item(item_data):
-                        st.success(f"Item '{item_name}' added successfully!")
-                        st.rerun()
-    with col2:
-        st.subheader("📋 Items List")
-        # Get all items
-        items_df = get_all_items()
-        if items_df.empty:
-            st.info("No items added yet. Add your first item to get started!")
-        else:
-            # Display items
-            for _, item in items_df.iterrows():
-                with st.container():
-                    st.markdown(f"""
-                    <div style='border: 1px solid #ddd; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;'>
-                        <h4>{item['name']}</h4>
-                        <p><strong>Final Price:</strong> {item['final_currency']} {item['final_price']:.2f}</p>
-                        <p><strong>Base Price:</strong> {item['price_currency']} {item['price']:.2f}</p>
-                        <p><strong>Shipping:</strong> {item['shipping_currency']} {item['shipping']:.2f}</p>
-                        <p><strong>Import:</strong> {item['import_currency']} {item['import_cost']:.2f}</p>
-                        <p><strong>Margin:</strong> {item['margin']:.2f} {item['margin_type']}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    # Delete button
-                    if st.button(f"Delete {item['name']}", key=f"delete_{item['id']}", type="secondary"):
-                        if delete_item(str(item['id'])):
-                            st.success(f"Item '{item['name']}' deleted!")
-                            st.rerun()
-            # Summary section
-            st.divider()
-            st.subheader("💰 Summary")
-            settings = get_settings()
-            subtotal = items_df['final_price'].sum()
-            tax_amount = subtotal * (settings['tax_rate'] / 100)
-            total = subtotal + tax_amount
-            summary_col1, summary_col2, summary_col3 = st.columns(3)
-            with summary_col1:
-                st.metric("Subtotal", f"${subtotal:.2f}")
-            with summary_col2:
-                st.metric(f"Tax ({settings['tax_rate']}%)", f"${tax_amount:.2f}")
-            with summary_col3:
-                st.metric("Total", f"${total:.2f}", delta=f"+${tax_amount:.2f}")
+    # --- Add New Item Section ---
+    st.subheader("➕ Add New Item")
+    with st.form("item_form"):
+        item_name = st.text_input("Item Name", placeholder="Enter item name")
+        # Price input
+        price_col1, price_col2 = st.columns([3, 1])
+        with price_col1:
+            item_price = st.number_input("Item Price", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="Enter price")
+        with price_col2:
+            price_currency = st.selectbox("Currency", ["USD", "INR"], key="price_currency")
+        # Shipping input
+        ship_col1, ship_col2 = st.columns([3, 1])
+        with ship_col1:
+            shipping_cost = st.number_input("Shipping Cost", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="Enter shipping cost")
+        with ship_col2:
+            shipping_currency = st.selectbox("Currency", ["USD", "INR"], key="shipping_currency")
+        # Import cost input
+        import_col1, import_col2 = st.columns([3, 1])
+        with import_col1:
+            import_cost = st.number_input("Import Cost", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="Enter import cost")
+        with import_col2:
+            import_currency = st.selectbox("Currency", ["USD", "INR"], key="import_currency")
+        # Margin input
+        margin_col1, margin_col2 = st.columns([3, 1])
+        with margin_col1:
+            margin = st.number_input("Margin", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="Enter margin")
+        with margin_col2:
+            margin_type = st.selectbox("Type", ["%", "USD", "INR"], key="margin_type")
+        # Final currency
+        final_currency = st.selectbox("Final Price Currency", ["USD", "INR"])
+        # Submit button
+        submitted = st.form_submit_button("Add Item", type="primary")
+        if submitted:
+            if not item_name or item_price is None or item_price <= 0:
+                st.error("Please enter a valid item name and price!")
+            else:
+                # Prepare item data and calculate final price
+                settings = get_settings()
+                item_data = {
+                    'id': str(uuid.uuid4()),
+                    'name': item_name,
+                    'price': item_price,
+                    'price_currency': price_currency,
+                    'shipping': shipping_cost if shipping_cost is not None else 0.0,
+                    'shipping_currency': shipping_currency,
+                    'import_cost': import_cost if import_cost is not None else 0.0,
+                    'import_currency': import_currency,
+                    'margin': margin if margin is not None else 0.0,
+                    'margin_type': margin_type,
+                    'final_currency': final_currency
+                }
+                final_price = calculate_final_price(item_data, settings)
+                item_data['final_price'] = final_price
+                # Add to database
+                if add_item(item_data):
+                    st.success(f"Item '{item_name}' added successfully!")
+                    st.rerun()
+
+    st.divider()
+    # --- Items List Section ---
+    st.subheader("📋 Items List")
+    items_df = get_all_items()
+    if items_df.empty:
+        st.info("No items added yet. Add your first item to get started!")
+    else:
+        # Prepare display DataFrame with same columns as database tab
+        display_df = items_df[['name', 'price', 'price_currency', 'shipping', 'shipping_currency',
+                              'import_cost', 'import_currency', 'margin', 'margin_type',
+                              'final_currency', 'final_price', 'created_at']].copy()
+        display_df['created_at'] = pd.to_datetime(display_df['created_at']).dt.strftime('%Y-%m-%d %H:%M')
+        # Configure AG Grid
+        gb = GridOptionsBuilder.from_dataframe(display_df)
+        gb.configure_selection(selection_mode='multiple', use_checkbox=True)
+        
+        # Configure columns with proper formatting and headers
+        gb.configure_column("name", header_name="Name", width=150)
+        gb.configure_column("price", header_name="Price", type=["numericColumn"], precision=2, width=100)
+        gb.configure_column("price_currency", header_name="Currency", width=90)
+        gb.configure_column("shipping", header_name="Shipping", type=["numericColumn"], precision=2, width=100)
+        gb.configure_column("shipping_currency", header_name="Ship Curr.", width=90)
+        gb.configure_column("import_cost", header_name="Import Cost", type=["numericColumn"], precision=2, width=100)
+        gb.configure_column("import_currency", header_name="Imp. Curr.", width=90)
+        gb.configure_column("margin", header_name="Margin", type=["numericColumn"], precision=2, width=100)
+        gb.configure_column("margin_type", header_name="Margin Type", width=100)
+        gb.configure_column("final_currency", header_name="Final Curr.", width=90)
+        gb.configure_column("final_price", header_name="Final Price", type=["numericColumn"], precision=2, width=100)
+        gb.configure_column("created_at", header_name="Created At", width=130)
+        
+        # Configure grid properties
+        gb.configure_grid_options(
+            domLayout='normal',
+            headerHeight=45,
+            rowHeight=35,
+            enableRangeSelection=True,
+            pagination=True,
+            paginationAutoPageSize=True
+        )
+        
+        grid_options = gb.build()
+        grid_response = AgGrid(
+            display_df,
+            gridOptions=grid_options,
+            update_mode=GridUpdateMode.SELECTION_CHANGED,
+            data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
+            fit_columns_on_grid_load=False,  # Don't auto-fit columns
+            theme='streamlit',
+            height=400,  # Fixed height to ensure scrolling
+            allow_unsafe_jscode=True  # Enable advanced features
+        )
+
+        # Get selected rows
+        selected_rows = grid_response['selected_rows']
+        selected_ids = [items_df.iloc[display_df.index.get_loc(row['_selectedRowNodeInfo']['nodeRowIndex'])]['id'] 
+                       for row in selected_rows] if selected_rows else []
+            
+        if selected_ids:
+            if st.button("Delete Selected", type="primary"):
+                for item_id in selected_ids:
+                    delete_item(str(item_id))
+                st.success(f"Deleted {len(selected_ids)} selected item(s)!")
+                st.rerun()
+
+    st.divider()
+    # --- Summary Section ---
+    st.subheader("💰 Summary")
+    settings = get_settings()
+    subtotal = items_df['final_price'].sum() if not items_df.empty else 0.0
+    tax_amount = subtotal * (settings['tax_rate'] / 100)
+    total = subtotal + tax_amount
+    summary_col1, summary_col2, summary_col3 = st.columns(3)
+    with summary_col1:
+        st.metric("Subtotal", f"${subtotal:.2f}")
+    with summary_col2:
+        st.metric(f"Tax ({settings['tax_rate']}%)", f"${tax_amount:.2f}")
+    with summary_col3:
+        st.metric("Total", f"${total:.2f}", delta=f"+${tax_amount:.2f}")
 
 # =============================
 # Database Tab
 # =============================
 def database_tab():
     """
-    Tab for viewing all items in the database and exporting data.
+    Database tab: View all items in a table and export data as CSV.
     """
     st.subheader("📊 Database Records")
-    # Get all items
     items_df = get_all_items()
     if not items_df.empty:
-        # Display items table
         st.subheader("Items")
         display_df = items_df[['name', 'price', 'price_currency', 'shipping', 'shipping_currency',
                               'import_cost', 'import_currency', 'margin', 'margin_type',
                               'final_currency', 'final_price', 'created_at']].copy()
-        display_df['created_at'] = pd.to_datetime(display_df['created_at']).strftime('%Y-%m-%d %H:%M')
+        display_df['created_at'] = pd.to_datetime(display_df['created_at']).dt.strftime('%Y-%m-%d %H:%M')
         st.dataframe(display_df, use_container_width=True)
         # Export functionality
         csv = display_df.to_csv(index=False)
@@ -471,21 +512,15 @@ def database_tab():
         )
     else:
         st.info("No items in database")
-    # Settings display
-    st.subheader("Settings")
-    settings = get_settings()
-    settings_df = pd.DataFrame([settings])
-    st.dataframe(settings_df, use_container_width=True)
 
 # =============================
 # Analytics Tab
 # =============================
 def analytics_tab():
     """
-    Tab for analytics dashboard with summary metrics and charts.
+    Analytics tab: View summary metrics and charts for all items.
     """
     st.subheader("📈 Analytics Dashboard")
-    # Get all items
     items_df = get_all_items()
     if items_df.empty:
         st.info("No data available for analytics. Add some items first!")
