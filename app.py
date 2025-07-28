@@ -198,21 +198,27 @@ def init_database() -> bool:
     try:
         conn = sqlite3.connect('price_calculator.db')
         cursor = conn.cursor()
-        # Create items table
+        # Create items table with new columns for marketing_budget and delivery_charge_us
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS items (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 price REAL NOT NULL,
                 price_currency TEXT NOT NULL,
+                additional_cost REAL NOT NULL DEFAULT 0.0,
+                additional_cost_currency TEXT,
                 shipping REAL NOT NULL,
                 shipping_currency TEXT NOT NULL,
+                delivery_charge_us REAL NOT NULL DEFAULT 15.0,
+                marketing_budget REAL NOT NULL DEFAULT 0.0,
                 import_cost REAL NOT NULL,
                 import_currency TEXT NOT NULL,
                 margin REAL NOT NULL,
                 margin_type TEXT NOT NULL,
                 final_currency TEXT NOT NULL,
                 final_price REAL NOT NULL,
+                final_price_usd REAL NOT NULL DEFAULT 0.0,
+                final_inr_with_budget_and_margin REAL NOT NULL DEFAULT 0.0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -319,14 +325,17 @@ def add_item(item_data: Dict) -> bool:
         cursor = conn.cursor()
         cursor.execute('''
             INSERT INTO items (
-                id, name, price, price_currency, shipping, shipping_currency,
-                import_cost, import_currency, margin, margin_type, final_currency, final_price
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                id, name, price, price_currency, additional_cost, additional_cost_currency,
+                shipping, shipping_currency, delivery_charge_us, marketing_budget,
+                import_cost, import_currency, margin, margin_type, final_currency,
+                final_price, final_price_usd, final_inr_with_budget_and_margin, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         ''', (
             item_data['id'], item_data['name'], item_data['price'], item_data['price_currency'],
-            item_data['shipping'], item_data['shipping_currency'], item_data['import_cost'],
-            item_data['import_currency'], item_data['margin'], item_data['margin_type'],
-            item_data['final_currency'], item_data['final_price']
+            item_data['additional_cost'], item_data['additional_cost_currency'],
+            item_data['shipping'], item_data['shipping_currency'], item_data['delivery_charge_us'], item_data['marketing_budget'],
+            item_data['import_cost'], item_data['import_currency'], item_data['margin'], item_data['margin_type'],
+            item_data['final_currency'], item_data['final_price'], item_data['final_price_usd'], item_data['final_inr_with_budget_and_margin']
         ))
         conn.commit()
         conn.close()
@@ -483,58 +492,110 @@ def calculator_tab():
     """
     # --- Add New Item Section ---
     st.subheader("➕ Add New Item")
+    # --- Real-time input fields ---
+    item_name = st.text_input("Item Name", placeholder="Enter item name")
+    price_col1, price_col2 = st.columns([3, 1])
+    with price_col1:
+        purchase_price = st.number_input("Purchase Price", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="Enter purchase price")
+    with price_col2:
+        purchase_currency = st.selectbox("Currency", ["INR", "USD"], key="purchase_currency", index=0)
+
+    add_cost_col1, add_cost_col2 = st.columns([3, 1])
+    with add_cost_col1:
+        additional_cost = st.selectbox(
+            "Additional Cost",
+            options=[150, 50, 100, 200, 250],
+            index=0,
+            format_func=lambda x: f"₹{x}" if x else str(x)
+        )
+    with add_cost_col2:
+        additional_cost_currency = st.selectbox("Currency", ["INR", "USD"], key="additional_cost_currency", index=0)
+
+    ship_us_col1, ship_us_col2 = st.columns([3, 1])
+    with ship_us_col1:
+        shipping_cost = st.selectbox(
+            "Shipping Cost to US",
+            options=[1000, 500, 750, 1250, 1500],
+            index=0,
+            format_func=lambda x: f"₹{x}" if x else str(x)
+        )
+    with ship_us_col2:
+        shipping_currency = st.selectbox("Currency", ["INR", "USD"], key="shipping_us_currency", index=0)
+
+    # --- Delivery Charge in US (display after shipping) ---
+    delivery_us_col1, delivery_us_col2 = st.columns([3, 1])
+    with delivery_us_col1:
+        delivery_charge_us = st.selectbox(
+            "Delivery Charge in US",
+            options=[5, 10, 15, 20, 25],
+            index=2,
+            format_func=lambda x: f"${x}" if x else str(x)
+        )
+    with delivery_us_col2:
+        st.markdown("<span style='color: #1f77b4; font-weight: 600;'>USD</span>", unsafe_allow_html=True)
+    settings = get_settings()
+    total_inr = 0.0
+    if purchase_currency == "INR" and purchase_price is not None:
+        total_inr += purchase_price
+    if additional_cost_currency == "INR" and additional_cost is not None:
+        total_inr += additional_cost
+    if shipping_currency == "INR" and shipping_cost is not None:
+        total_inr += shipping_cost
+    # Add Delivery Charge in US converted to INR
+    if delivery_charge_us is not None:
+        total_inr += delivery_charge_us * settings['usd_to_inr_rate']
+    usd_equiv = total_inr / settings['usd_to_inr_rate'] if settings['usd_to_inr_rate'] else 0.0
+
+    # Marketing Budget: 10% of Total Price in INR
+    marketing_budget = total_inr * 0.10
+
+    # Margin logic
+    if total_inr <= 5000:
+        margin_percent = 50
+    elif total_inr > 5000 and total_inr <= 10000:
+        margin_percent = 40
+    elif total_inr > 10000:
+        margin_percent = 30
+    else:
+        margin_percent = 0
+    margin_value = total_inr * margin_percent / 100
+
+    # Final Price in INR including Marketing Budget and Margin
+    final_inr_with_budget_and_margin = total_inr + marketing_budget + margin_value
+    final_price_usd = final_inr_with_budget_and_margin / settings['usd_to_inr_rate'] if settings['usd_to_inr_rate'] else 0.0
+
+    st.info(f"Total Price in INR: ₹{total_inr:.2f}")
+    st.info(f"Marketing Budget (10%): ₹{marketing_budget:.2f}")
+    st.info(f"Margin: {margin_percent}% (₹{margin_value:.2f})")
+    st.success(f"Final Price in USD: ${final_price_usd:.2f} (₹{final_inr_with_budget_and_margin:.2f})")
+
+    # --- Form for submission only ---
     with st.form("item_form"):
-        item_name = st.text_input("Item Name", placeholder="Enter item name")
-        # Price input
-        price_col1, price_col2 = st.columns([3, 1])
-        with price_col1:
-            item_price = st.number_input("Item Price", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="Enter price")
-        with price_col2:
-            price_currency = st.selectbox("Currency", ["USD", "INR"], key="price_currency")
-        # Shipping input
-        ship_col1, ship_col2 = st.columns([3, 1])
-        with ship_col1:
-            shipping_cost = st.number_input("Shipping Cost", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="Enter shipping cost")
-        with ship_col2:
-            shipping_currency = st.selectbox("Currency", ["USD", "INR"], key="shipping_currency")
-        # Import cost input
-        import_col1, import_col2 = st.columns([3, 1])
-        with import_col1:
-            import_cost = st.number_input("Import Cost", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="Enter import cost")
-        with import_col2:
-            import_currency = st.selectbox("Currency", ["USD", "INR"], key="import_currency")
-        # Margin input
-        margin_col1, margin_col2 = st.columns([3, 1])
-        with margin_col1:
-            margin = st.number_input("Margin", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="Enter margin")
-        with margin_col2:
-            margin_type = st.selectbox("Type", ["%", "USD", "INR"], key="margin_type")
-        # Final currency
-        final_currency = st.selectbox("Final Price Currency", ["USD", "INR"])
-        # Submit button
         submitted = st.form_submit_button("Add Item", type="primary")
         if submitted:
-            if not item_name or item_price is None or item_price <= 0:
-                st.error("Please enter a valid item name and price!")
+            if not item_name or purchase_price is None or purchase_price <= 0:
+                st.error("Please enter a valid item name and purchase price!")
             else:
-                # Prepare item data and calculate final price
-                settings = get_settings()
                 item_data = {
                     'id': str(uuid.uuid4()),
                     'name': item_name,
-                    'price': item_price,
-                    'price_currency': price_currency,
-                    'shipping': shipping_cost if shipping_cost is not None else 0.0,
+                    'price': purchase_price,
+                    'price_currency': purchase_currency,
+                    'additional_cost': additional_cost,
+                    'additional_cost_currency': additional_cost_currency,
+                    'shipping': shipping_cost,
                     'shipping_currency': shipping_currency,
-                    'import_cost': import_cost if import_cost is not None else 0.0,
-                    'import_currency': import_currency,
-                    'margin': margin if margin is not None else 0.0,
-                    'margin_type': margin_type,
-                    'final_currency': final_currency
+                    'delivery_charge_us': delivery_charge_us,
+                    'marketing_budget': marketing_budget,
+                    'import_cost': 0.0,
+                    'import_currency': 'INR',
+                    'margin': margin_value,
+                    'margin_type': f"{margin_percent}%",
+                    'final_currency': 'INR',
+                    'final_price': total_inr,
+                    'final_price_usd': final_price_usd,
+                    'final_inr_with_budget_and_margin': final_inr_with_budget_and_margin
                 }
-                final_price = calculate_final_price(item_data, settings)
-                item_data['final_price'] = final_price
-                # Add to database
                 if add_item(item_data):
                     st.success(f"Item '{item_name}' added successfully!")
                     st.rerun()
@@ -546,10 +607,19 @@ def calculator_tab():
     if items_df.empty:
         st.info("No items added yet. Add your first item to get started!")
     else:
-        # Prepare display DataFrame with same columns as database tab
-        display_df = items_df[['name', 'price', 'price_currency', 'shipping', 'shipping_currency',
-                              'import_cost', 'import_currency', 'margin', 'margin_type',
-                              'final_currency', 'final_price', 'created_at']].copy()
+        # Prepare display DataFrame with expanded columns
+        display_df = items_df[[
+            'name',
+            'price', 'price_currency',
+            'additional_cost', 'additional_cost_currency',
+            'shipping', 'shipping_currency',
+            'delivery_charge_us',
+            'marketing_budget',
+            'margin',
+            'final_inr_with_budget_and_margin',
+            'final_price_usd',
+            'final_price',
+            'created_at']].copy()
         display_df['created_at'] = pd.to_datetime(display_df['created_at']).dt.strftime('%Y-%m-%d %H:%M')
         # Configure AG Grid
         gb = GridOptionsBuilder.from_dataframe(display_df)
@@ -557,16 +627,18 @@ def calculator_tab():
         
         # Configure columns with proper formatting and headers
         gb.configure_column("name", header_name="Name", width=150)
-        gb.configure_column("price", header_name="Price", type=["numericColumn"], precision=2, width=100)
+        gb.configure_column("price", header_name="Purchase Price", type=["numericColumn"], precision=2, width=100)
         gb.configure_column("price_currency", header_name="Currency", width=90)
-        gb.configure_column("shipping", header_name="Shipping", type=["numericColumn"], precision=2, width=100)
+        gb.configure_column("additional_cost", header_name="Additional Cost", type=["numericColumn"], precision=2, width=120)
+        gb.configure_column("additional_cost_currency", header_name="Add. Curr.", width=90)
+        gb.configure_column("shipping", header_name="Shipping Cost to US", type=["numericColumn"], precision=2, width=150)
         gb.configure_column("shipping_currency", header_name="Ship Curr.", width=90)
-        gb.configure_column("import_cost", header_name="Import Cost", type=["numericColumn"], precision=2, width=100)
-        gb.configure_column("import_currency", header_name="Imp. Curr.", width=90)
-        gb.configure_column("margin", header_name="Margin", type=["numericColumn"], precision=2, width=100)
-        gb.configure_column("margin_type", header_name="Margin Type", width=100)
-        gb.configure_column("final_currency", header_name="Final Curr.", width=90)
-        gb.configure_column("final_price", header_name="Final Price", type=["numericColumn"], precision=2, width=100)
+        gb.configure_column("delivery_charge_us", header_name="Delivery Charge in US ($)", type=["numericColumn"], precision=2, width=120)
+        gb.configure_column("marketing_budget", header_name="Marketing Budget (₹)", type=["numericColumn"], precision=2, width=120)
+        gb.configure_column("margin", header_name="Margin (₹)", type=["numericColumn"], precision=2, width=120)
+        gb.configure_column("final_inr_with_budget_and_margin", header_name="Final INR (with Budget & Margin)", type=["numericColumn"], precision=2, width=150)
+        gb.configure_column("final_price_usd", header_name="Final Price in USD", type=["numericColumn"], precision=2, width=150)
+        gb.configure_column("final_price", header_name="Total Price in INR", type=["numericColumn"], precision=2, width=130)
         gb.configure_column("created_at", header_name="Created At", width=130)
         
         # Configure grid properties
@@ -635,9 +707,18 @@ def database_tab():
     items_df = get_all_items()
     if not items_df.empty:
         st.subheader("Items")
-        display_df = items_df[['name', 'price', 'price_currency', 'shipping', 'shipping_currency',
-                              'import_cost', 'import_currency', 'margin', 'margin_type',
-                              'final_currency', 'final_price', 'created_at']].copy()
+        display_df = items_df[[
+            'name',
+            'price', 'price_currency',
+            'additional_cost', 'additional_cost_currency',
+            'shipping', 'shipping_currency',
+            'delivery_charge_us',
+            'marketing_budget',
+            'margin',
+            'final_inr_with_budget_and_margin',
+            'final_price_usd',
+            'final_price',
+            'created_at']].copy()
         display_df['created_at'] = pd.to_datetime(display_df['created_at']).dt.strftime('%Y-%m-%d %H:%M')
         st.dataframe(display_df, use_container_width=True)
         # Export functionality
