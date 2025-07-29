@@ -441,6 +441,25 @@ def main():
     # Sidebar for settings
     with st.sidebar:
         st.header("⚙️ Settings")
+        st.markdown("""
+        <div style="background:rgba(232,244,253,0.7);border-radius:10px;padding:1rem 1.2rem 1rem 1.2rem;margin-bottom:1rem;border:1px solid #1f77b4;box-shadow:0 2px 8px rgba(31,119,180,0.08);">
+            <h4 style="color:#1f77b4;margin-bottom:0.7rem;display:flex;align-items:center;"><span style='font-size:1.3em;margin-right:0.5em;'>📋</span> <span>Price Calculation Rules</span></h4>
+            <ul style="padding-left:1.2em;margin-bottom:0.7em;">
+                <li style="margin-bottom:0.5em;"><span style='color:#2ca02c;font-weight:600;'>💸 Marketing Budget:</span> <span style='color:#333;'>10% of Total Price in INR</span></li>
+                <li style="margin-bottom:0.5em;"><span style='color:#ff7f0e;font-weight:600;'>🚚 Delivery Charge in US:</span> <span style='color:#333;'>Select from <b>$5, $10, $15, $20, $25</b> (default <b>$15</b>)</span></li>
+                <li style="margin-bottom:0.5em;"><span style='color:#d62728;font-weight:600;'>📈 Margin:</span>
+                    <ul style='margin:0.3em 0 0.3em 1.2em;'>
+                        <li>50% if <b>Total INR ≤ 5000</b></li>
+                        <li>40% if <b>5000 < Total INR ≤ 10000</b></li>
+                        <li>30% if <b>Total INR > 10000</b></li>
+                    </ul>
+                </li>
+                <li style="margin-bottom:0.5em;"><span style='color:#9467bd;font-weight:600;'>💵 Final Price in USD:</span> <span style='color:#333;'>Includes all costs, margin, and marketing budget</span></li>
+                <li style="margin-bottom:0.5em;"><span style='color:#1f77b4;font-weight:600;'>💱 Currency Conversion:</span> <span style='color:#333;'>Uses current USD to INR rate</span></li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+        st.divider()
         # Get current settings
         settings = get_settings()
         # Exchange rate
@@ -534,40 +553,42 @@ def calculator_tab():
     with delivery_us_col2:
         st.markdown("<span style='color: #1f77b4; font-weight: 600;'>USD</span>", unsafe_allow_html=True)
     settings = get_settings()
-    total_inr = 0.0
-    if purchase_currency == "INR" and purchase_price is not None:
-        total_inr += purchase_price
-    if additional_cost_currency == "INR" and additional_cost is not None:
-        total_inr += additional_cost
-    if shipping_currency == "INR" and shipping_cost is not None:
-        total_inr += shipping_cost
-    # Add Delivery Charge in US converted to INR
-    if delivery_charge_us is not None:
-        total_inr += delivery_charge_us * settings['usd_to_inr_rate']
-    usd_equiv = total_inr / settings['usd_to_inr_rate'] if settings['usd_to_inr_rate'] else 0.0
+    show_calculations = item_name and purchase_price is not None and purchase_price > 0
+    if show_calculations:
+        total_inr = 0.0
+        if purchase_currency == "INR" and purchase_price is not None:
+            total_inr += purchase_price
+        if additional_cost_currency == "INR" and additional_cost is not None:
+            total_inr += additional_cost
+        if shipping_currency == "INR" and shipping_cost is not None:
+            total_inr += shipping_cost
+        # Add Delivery Charge in US converted to INR
+        if delivery_charge_us is not None:
+            total_inr += delivery_charge_us * settings['usd_to_inr_rate']
+        usd_equiv = total_inr / settings['usd_to_inr_rate'] if settings['usd_to_inr_rate'] else 0.0
 
-    # Marketing Budget: 10% of Total Price in INR
-    marketing_budget = total_inr * 0.10
+        # Marketing Budget: 10% of Total Price in INR
+        marketing_budget = total_inr * 0.10
 
-    # Margin logic
-    if total_inr <= 5000:
-        margin_percent = 50
-    elif total_inr > 5000 and total_inr <= 10000:
-        margin_percent = 40
-    elif total_inr > 10000:
-        margin_percent = 30
-    else:
-        margin_percent = 0
-    margin_value = total_inr * margin_percent / 100
+        # Margin logic
+        if total_inr <= 5000:
+            margin_percent = 50
+        elif total_inr > 5000 and total_inr <= 10000:
+            margin_percent = 40
+        elif total_inr > 10000:
+            margin_percent = 30
+        else:
+            margin_percent = 0
+        margin_value = total_inr * margin_percent / 100
 
-    # Final Price in INR including Marketing Budget and Margin
-    final_inr_with_budget_and_margin = total_inr + marketing_budget + margin_value
-    final_price_usd = final_inr_with_budget_and_margin / settings['usd_to_inr_rate'] if settings['usd_to_inr_rate'] else 0.0
+        # Final Price in INR including Marketing Budget and Margin
+        final_inr_with_budget_and_margin = total_inr + marketing_budget + margin_value
+        final_price_usd = final_inr_with_budget_and_margin / settings['usd_to_inr_rate'] if settings['usd_to_inr_rate'] else 0.0
 
-    st.info(f"Total Price in INR: ₹{total_inr:.2f}")
-    st.info(f"Marketing Budget (10%): ₹{marketing_budget:.2f}")
-    st.info(f"Margin: {margin_percent}% (₹{margin_value:.2f})")
-    st.success(f"Final Price in USD: ${final_price_usd:.2f} (₹{final_inr_with_budget_and_margin:.2f})")
+        st.info(f"Total Price in INR: ₹{total_inr:.2f}")
+        st.info(f"Marketing Budget (10%): ₹{marketing_budget:.2f}")
+        st.info(f"Margin: {margin_percent}% (₹{margin_value:.2f})")
+        st.success(f"Final Price in USD: ${final_price_usd:.2f} (₹{final_inr_with_budget_and_margin:.2f})")
 
     # --- Form for submission only ---
     with st.form("item_form"):
@@ -671,9 +692,19 @@ def calculator_tab():
 
         # Get selected rows
         selected_rows = grid_response['selected_rows']
-        selected_ids = [items_df.iloc[display_df.index.get_loc(row['_selectedRowNodeInfo']['nodeRowIndex'])]['id'] 
-                       for row in selected_rows] if selected_rows else []
-            
+        selected_ids = []
+        # Ensure selected_rows is a list of dicts
+        if isinstance(selected_rows, pd.DataFrame):
+            selected_rows = selected_rows.to_dict(orient='records')
+        if isinstance(selected_rows, list) and selected_rows:
+            for row in selected_rows:
+                # Match by 'name' and 'created_at' (formatted)
+                match = items_df[
+                    (items_df['name'] == row['name']) &
+                    (pd.to_datetime(items_df['created_at']).dt.strftime('%Y-%m-%d %H:%M') == row['created_at'])
+                ]
+                if not match.empty:
+                    selected_ids.append(match.iloc[0]['id'])
         if selected_ids:
             if st.button("Delete Selected", type="primary"):
                 for item_id in selected_ids:
