@@ -1,3 +1,40 @@
+# Price Calculator
+
+## Features
+- Modern UI with glassmorphism and animations
+- Real-time price calculation with tax, shipping, import costs, margin, marketing budget, and currency conversion
+- Interactive AG Grid table for item management
+- Analytics dashboard with charts and statistics
+- Export data as CSV
+
+## Requirements
+
+All required Python packages are listed in `requirements.txt`. Key packages:
+- streamlit
+- st-aggrid
+- pandas
+- plotly
+
+## Deploying on Streamlit Community Cloud
+
+1. Ensure your `requirements.txt` includes:
+   - `st-aggrid`
+   - `streamlit`
+   - `pandas`
+   - `plotly`
+2. Push your code to GitHub.
+3. Go to [streamlit.io/cloud](https://streamlit.io/cloud) and connect your repo.
+4. The app will auto-deploy. If you see a missing package error, check `requirements.txt`.
+
+## Running Locally
+
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+## License
+See LICENSE file.
 # Price Calculator - Streamlit Version
 
 A modern, interactive price calculator built with Streamlit that helps calculate final prices including tax, shipping, import costs, and profit margins with multi-currency support.
