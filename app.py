@@ -2,14 +2,23 @@
 # Imports
 # =============================
 import streamlit as st
-import sqlite3
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 import uuid
-from typing import Dict
+from typing import Dict, List, Optional, Tuple, Any
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
+
+# Internal Imports
+from src.database import (
+    init_database, get_settings, update_settings, get_all_items, 
+    add_item, update_item_field, delete_item, clear_all_items
+)
+from src.utils import (
+    fetch_real_time_exchange_rate, convert_currency, calculate_final_price,
+    generate_excel_export, generate_pdf_export
+)
 
 # =============================
 # Streamlit Page Configuration
@@ -22,412 +31,11 @@ st.set_page_config(
 )
 
 # =============================
-# Custom CSS for Styling
+# Load Custom CSS
 # =============================
-st.markdown("""
-<style>
-    /* Glass Effect and Animations */
-    .glass-effect {
-        background: rgba(255, 255, 255, 0.7) !important;
-        backdrop-filter: blur(10px) !important;
-        border: 1px solid rgba(255, 255, 255, 0.18) !important;
-        border-radius: 10px !important;
-        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37) !important;
-    }
-    
-    .slide-in {
-        animation: slideIn 0.5s ease-out;
-    }
-    
-    .fade-in {
-        animation: fadeIn 0.5s ease-out;
-    }
-    
-    .scale-in {
-        animation: scaleIn 0.3s ease-out;
-    }
-    
-    @keyframes slideIn {
-        from {
-            transform: translateX(-20px);
-            opacity: 0;
-        }
-        to {
-            transform: translateX(0);
-            opacity: 1;
-        }
-    }
-    
-    @keyframes fadeIn {
-        from { opacity: 0; }
-        to { opacity: 1; }
-    }
-    
-    @keyframes scaleIn {
-        from {
-            transform: scale(0.95);
-            opacity: 0;
-        }
-        to {
-            transform: scale(1);
-            opacity: 1;
-        }
-    }
-    
-    /* Header Styling */
-    .main-header {
-        text-align: center;
-        color: #1f77b4;
-        margin-bottom: 2rem;
-        animation: fadeIn 1s ease-out;
-    }
-    
-    /* Card Styling */
-    .metric-card {
-        background: rgba(255, 255, 255, 0.7);
-        backdrop-filter: blur(10px);
-        padding: 1.2rem;
-        border-radius: 10px;
-        border: 1px solid rgba(255, 255, 255, 0.18);
-        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.2);
-        transition: all 0.3s ease;
-        animation: scaleIn 0.5s ease-out;
-    }
-    
-    .metric-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.25);
-    }
-    
-    .summary-box {
-        background: rgba(232, 244, 253, 0.8);
-        backdrop-filter: blur(10px);
-        padding: 1.2rem;
-        border-radius: 10px;
-        border: 1px solid rgba(31, 119, 180, 0.2);
-        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
-        transition: all 0.3s ease;
-        animation: slideIn 0.5s ease-out;
-    }
-    
-    /* Button Styling */
-    .stButton > button {
-        width: 100%;
-        margin-top: 1rem;
-        background: rgba(31, 119, 180, 0.8) !important;
-        backdrop-filter: blur(5px) !important;
-        border: 1px solid rgba(255, 255, 255, 0.18) !important;
-        border-radius: 8px !important;
-        box-shadow: 0 4px 16px 0 rgba(31, 38, 135, 0.2) !important;
-        transition: all 0.3s ease !important;
-    }
-    
-    .stButton > button:hover {
-        transform: translateY(-2px) !important;
-        box-shadow: 0 8px 24px 0 rgba(31, 38, 135, 0.25) !important;
-    }
-    
-    /* Input Styling */
-    .currency-input {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        animation: fadeIn 0.5s ease-out;
-    }
-    
-    /* Streamlit Elements Override */
-    .stSelectbox, .stNumberInput {
-        animation: fadeIn 0.5s ease-out;
-    }
-    
-    .streamlit-expanderHeader {
-        background: rgba(255, 255, 255, 0.7) !important;
-        backdrop-filter: blur(10px) !important;
-        border-radius: 8px !important;
-    }
-    
-    /* AG Grid Styling */
-    .ag-theme-streamlit {
-        --ag-background-color: rgba(255, 255, 255, 0.8) !important;
-        --ag-header-background-color: rgba(240, 242, 246, 0.9) !important;
-        --ag-odd-row-background-color: rgba(249, 250, 251, 0.6) !important;
-        --ag-row-hover-color: rgba(232, 244, 253, 0.8) !important;
-        animation: fadeIn 0.5s ease-out;
-    }
-    
-    /* Tab Styling */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background: transparent;
-        padding: 0.5rem;
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        border-radius: 6px;
-        transition: all 0.3s ease;
-        background: rgba(31, 119, 180, 0.8) !important;
-        color: rgba(255, 255, 255, 0.9) !important;
-        padding: 8px 16px !important;
-        border: 1px solid rgba(255, 255, 255, 0.18) !important;
-        backdrop-filter: blur(5px) !important;
-        box-shadow: 0 4px 16px 0 rgba(31, 38, 135, 0.2) !important;
-    }
-    
-    .stTabs [data-baseweb="tab"]:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 24px 0 rgba(31, 38, 135, 0.25) !important;
-    }
-    
-    .stTabs [data-baseweb="tab"][aria-selected="true"] {
-        background: rgba(255, 255, 255, 0.9) !important;
-        color: rgba(31, 119, 180, 1) !important;
-        font-weight: 600 !important;
-        box-shadow: 0 4px 16px 0 rgba(31, 38, 135, 0.15) !important;
-    }
-</style>
-""", unsafe_allow_html=True)
+with open("assets/style.css") as f:
+    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-# =============================
-# Database Utility Functions
-# =============================
-def init_database() -> bool:
-    """
-    Initialize the SQLite database with required tables for items and settings.
-    Returns True if successful, False otherwise.
-    """
-    try:
-        conn = sqlite3.connect('price_calculator.db')
-        cursor = conn.cursor()
-        # Create items table with new columns for marketing_budget and delivery_charge_us
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS items (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                price REAL NOT NULL,
-                price_currency TEXT NOT NULL,
-                additional_cost REAL NOT NULL DEFAULT 0.0,
-                additional_cost_currency TEXT,
-                shipping REAL NOT NULL,
-                shipping_currency TEXT NOT NULL,
-                delivery_charge_us REAL NOT NULL DEFAULT 15.0,
-                marketing_budget REAL NOT NULL DEFAULT 0.0,
-                import_cost REAL NOT NULL,
-                import_currency TEXT NOT NULL,
-                margin REAL NOT NULL,
-                margin_type TEXT NOT NULL,
-                final_currency TEXT NOT NULL,
-                final_price REAL NOT NULL,
-                final_price_usd REAL NOT NULL DEFAULT 0.0,
-                final_inr_with_budget_and_margin REAL NOT NULL DEFAULT 0.0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        # Create settings table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS settings (
-                id INTEGER PRIMARY KEY,
-                tax_rate REAL NOT NULL DEFAULT 8.25,
-                usd_to_inr_rate REAL NOT NULL DEFAULT 83.25,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        # Initialize default settings if not exists
-        cursor.execute('SELECT COUNT(*) FROM settings')
-        if cursor.fetchone()[0] == 0:
-            cursor.execute('INSERT INTO settings (id, tax_rate, usd_to_inr_rate) VALUES (1, 8.25, 83.25)')
-        conn.commit()
-        conn.close()
-        return True
-    except Exception as e:
-        st.error(f"Database initialization error: {e}")
-        return False
-
-def get_db_connection():
-    """
-    Get a connection to the SQLite database.
-    Returns a connection object or None if connection fails.
-    """
-    try:
-        return sqlite3.connect('price_calculator.db')
-    except Exception as e:
-        st.error(f"Database connection error: {e}")
-        return None
-
-def get_settings() -> Dict:
-    """
-    Retrieve the current settings (tax rate and exchange rate) from the database.
-    Returns a dictionary with 'tax_rate' and 'usd_to_inr_rate'.
-    """
-    try:
-        conn = get_db_connection()
-        if conn is None:
-            return {'tax_rate': 8.25, 'usd_to_inr_rate': 83.25}
-        settings = pd.read_sql_query('SELECT * FROM settings WHERE id = 1', conn)
-        conn.close()
-        if settings.empty:
-            return {'tax_rate': 8.25, 'usd_to_inr_rate': 83.25}
-        return {
-            'tax_rate': float(settings.iloc[0]['tax_rate']),
-            'usd_to_inr_rate': float(settings.iloc[0]['usd_to_inr_rate'])
-        }
-    except Exception as e:
-        st.error(f"Error getting settings: {e}")
-        return {'tax_rate': 8.25, 'usd_to_inr_rate': 83.25}
-
-def update_settings(tax_rate: float, usd_to_inr_rate: float) -> bool:
-    """
-    Update the tax rate and exchange rate in the database.
-    Returns True if successful, False otherwise.
-    """
-    try:
-        conn = get_db_connection()
-        if conn is None:
-            return False
-        cursor = conn.cursor()
-        cursor.execute('''
-            UPDATE settings 
-            SET tax_rate = ?, usd_to_inr_rate = ?, updated_at = CURRENT_TIMESTAMP 
-            WHERE id = 1
-        ''', (tax_rate, usd_to_inr_rate))
-        conn.commit()
-        conn.close()
-        return True
-    except Exception as e:
-        st.error(f"Error updating settings: {e}")
-        return False
-
-def get_all_items() -> pd.DataFrame:
-    """
-    Retrieve all items from the database as a DataFrame.
-    Returns an empty DataFrame if there are no items or on error.
-    """
-    try:
-        conn = get_db_connection()
-        if conn is None:
-            return pd.DataFrame()
-        items = pd.read_sql_query('SELECT * FROM items ORDER BY created_at DESC', conn)
-        conn.close()
-        return items
-    except Exception as e:
-        st.error(f"Error getting items: {e}")
-        return pd.DataFrame()
-
-def add_item(item_data: Dict) -> bool:
-    """
-    Add a new item to the database.
-    Returns True if successful, False otherwise.
-    """
-    try:
-        conn = get_db_connection()
-        if conn is None:
-            return False
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO items (
-                id, name, price, price_currency, additional_cost, additional_cost_currency,
-                shipping, shipping_currency, delivery_charge_us, marketing_budget,
-                import_cost, import_currency, margin, margin_type, final_currency,
-                final_price, final_price_usd, final_inr_with_budget_and_margin, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        ''', (
-            item_data['id'], item_data['name'], item_data['price'], item_data['price_currency'],
-            item_data['additional_cost'], item_data['additional_cost_currency'],
-            item_data['shipping'], item_data['shipping_currency'], item_data['delivery_charge_us'], item_data['marketing_budget'],
-            item_data['import_cost'], item_data['import_currency'], item_data['margin'], item_data['margin_type'],
-            item_data['final_currency'], item_data['final_price'], item_data['final_price_usd'], item_data['final_inr_with_budget_and_margin']
-        ))
-        conn.commit()
-        conn.close()
-        return True
-    except Exception as e:
-        st.error(f"Error adding item: {e}")
-        return False
-
-def delete_item(item_id: str) -> bool:
-    """
-    Delete an item from the database by its ID.
-    Returns True if successful, False otherwise.
-    """
-    try:
-        conn = get_db_connection()
-        if conn is None:
-            return False
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM items WHERE id = ?', (item_id,))
-        conn.commit()
-        conn.close()
-        return True
-    except Exception as e:
-        st.error(f"Error deleting item: {e}")
-        return False
-
-def clear_all_items() -> bool:
-    """
-    Remove all items from the database.
-    Returns True if successful, False otherwise.
-    """
-    try:
-        conn = get_db_connection()
-        if conn is None:
-            return False
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM items')
-        conn.commit()
-        conn.close()
-        return True
-    except Exception as e:
-        st.error(f"Error clearing items: {e}")
-        return False
-
-# =============================
-# Currency and Price Calculation
-# =============================
-def convert_currency(amount: float, from_currency: str, to_currency: str, exchange_rate: float) -> float:
-    """
-    Convert currency between USD and INR using the provided exchange rate.
-    """
-    if from_currency == to_currency:
-        return amount
-    elif from_currency == 'USD' and to_currency == 'INR':
-        return amount * exchange_rate
-    elif from_currency == 'INR' and to_currency == 'USD':
-        return amount / exchange_rate
-    else:
-        return amount
-
-def calculate_final_price(item_data: Dict, settings: Dict) -> float:
-    """
-    Calculate the final price for an item, including margin and currency conversion.
-    """
-    final_currency = item_data['final_currency']
-    exchange_rate = settings['usd_to_inr_rate']
-    # Convert all costs to final currency
-    price_in_final = convert_currency(
-        item_data['price'], item_data['price_currency'], final_currency, exchange_rate
-    )
-    shipping_in_final = convert_currency(
-        item_data['shipping'], item_data['shipping_currency'], final_currency, exchange_rate
-    )
-    import_in_final = convert_currency(
-        item_data['import_cost'], item_data['import_currency'], final_currency, exchange_rate
-    )
-    # Calculate base cost
-    base_cost = price_in_final + shipping_in_final + import_in_final
-    # Apply margin
-    if item_data['margin_type'] == '%':
-        final_price = base_cost * (1 + item_data['margin'] / 100)
-    else:
-        # Margin is in currency
-        margin_in_final = convert_currency(
-            item_data['margin'], item_data['margin_type'], final_currency, exchange_rate
-        )
-        final_price = base_cost + margin_in_final
-    return round(final_price, 2)
-
-# =============================
-# Main Streamlit App
-# =============================
 def main():
     """
     Main function to run the Streamlit Price Calculator app.
@@ -463,14 +71,27 @@ def main():
         # Get current settings
         settings = get_settings()
         # Exchange rate
-        usd_to_inr_rate = st.number_input(
-            "USD to INR Exchange Rate",
-            min_value=0.01,
-            max_value=200.0,
-            value=float(settings['usd_to_inr_rate']),
-            step=0.01,
-            format="%.2f"
-        )
+        rate_col1, rate_col2 = st.columns([2, 1])
+        with rate_col1:
+            usd_to_inr_rate = st.number_input(
+                "USD to INR Rate",
+                min_value=0.01,
+                max_value=200.0,
+                value=float(settings['usd_to_inr_rate']),
+                step=0.01,
+                format="%.2f"
+            )
+        with rate_col2:
+            st.write("") # Spacer
+            st.write("") # Spacer
+            if st.button("🔄 Fetch", help="Fetch latest rate from API"):
+                new_rate = fetch_real_time_exchange_rate()
+                if new_rate:
+                    usd_to_inr_rate = new_rate
+                    st.success(f"Fetched: {new_rate}")
+                else:
+                    st.error("API failed")
+
         # Tax rate
         tax_rate = st.number_input(
             "Tax Rate (%)",
@@ -480,9 +101,10 @@ def main():
             step=0.01,
             format="%.2f"
         )
+        
         # Update settings if changed
-        if (usd_to_inr_rate != settings['usd_to_inr_rate'] or 
-            tax_rate != settings['tax_rate']):
+        if (abs(usd_to_inr_rate - settings['usd_to_inr_rate']) > 0.001 or 
+            abs(tax_rate - settings['tax_rate']) > 0.001):
             if update_settings(tax_rate, usd_to_inr_rate):
                 st.success("Settings updated!")
                 st.rerun()
@@ -493,13 +115,13 @@ def main():
                 st.success("All items cleared!")
                 st.rerun()
     # Main content tabs
-    tab1, tab2, tab3 = st.tabs(["📝 Item Calculation", "📊 Database", "📈 Analytics"])
+    tab1, tab2, tab3 = st.tabs(["📝 Item Calculation", "📈 Analytics", "📊 Database"])
     with tab1:
         calculator_tab()
     with tab2:
-        database_tab()
-    with tab3:
         analytics_tab()
+    with tab3:
+        database_tab()
 
 # =============================
 # Item Calculation Tab
@@ -512,7 +134,16 @@ def calculator_tab():
     # --- Add New Item Section ---
     st.subheader("➕ Add New Item")
     # --- Real-time input fields ---
-    item_name = st.text_input("Item Name", placeholder="Enter item name")
+    name_col1, name_col2 = st.columns([2, 1])
+    with name_col1:
+        item_name = st.text_input("Item Name", placeholder="Enter item name")
+    with name_col2:
+        category = st.selectbox(
+            "Category",
+            ["Electronics", "Apparel", "Home & Kitchen", "Books", "Toys", "Other"],
+            index=5
+        )
+    
     price_col1, price_col2 = st.columns([3, 1])
     with price_col1:
         purchase_price = st.number_input("Purchase Price", min_value=0.0, step=0.01, format="%.2f", value=None, placeholder="Enter purchase price")
@@ -600,6 +231,7 @@ def calculator_tab():
                 item_data = {
                     'id': str(uuid.uuid4()),
                     'name': item_name,
+                    'category': category,
                     'price': purchase_price,
                     'price_currency': purchase_currency,
                     'additional_cost': additional_cost,
@@ -628,9 +260,12 @@ def calculator_tab():
     if items_df.empty:
         st.info("No items added yet. Add your first item to get started!")
     else:
+        st.info("💡 **Tip:** Select one or more rows using the checkboxes to delete records.")
         # Prepare display DataFrame with expanded columns
         display_df = items_df[[
+            'id',
             'name',
+            'category',
             'price', 'price_currency',
             'additional_cost', 'additional_cost_currency',
             'shipping', 'shipping_currency',
@@ -647,9 +282,14 @@ def calculator_tab():
         gb.configure_selection(selection_mode='multiple', use_checkbox=True)
         
         # Configure columns with proper formatting and headers
-        gb.configure_column("name", header_name="Name", width=150)
-        gb.configure_column("price", header_name="Purchase Price", type=["numericColumn"], precision=2, width=100)
-        gb.configure_column("price_currency", header_name="Currency", width=90)
+        gb.configure_column("id", hide=True)
+        gb.configure_column("name", header_name="Name", width=150, editable=True, checkboxSelection=True)
+        gb.configure_column("category", header_name="Category", width=120, editable=True, 
+                            cellEditor='agSelectCellEditor', 
+                            cellEditorParams={'values': ["Electronics", "Apparel", "Home & Kitchen", "Books", "Toys", "Other"]})
+        gb.configure_column("price", header_name="Purchase Price", type=["numericColumn"], precision=2, width=100, editable=True)
+        gb.configure_column("price_currency", header_name="Currency", width=90, editable=True,
+                            cellEditor='agSelectCellEditor', cellEditorParams={'values': ["INR", "USD"]})
         gb.configure_column("additional_cost", header_name="Additional Cost", type=["numericColumn"], precision=2, width=120)
         gb.configure_column("additional_cost_currency", header_name="Add. Curr.", width=90)
         gb.configure_column("shipping", header_name="Shipping Cost to US", type=["numericColumn"], precision=2, width=150)
@@ -682,13 +322,28 @@ def calculator_tab():
         grid_response = AgGrid(
             display_df,
             gridOptions=grid_options,
-            update_mode=GridUpdateMode.SELECTION_CHANGED,
+            update_mode=GridUpdateMode.MODEL_CHANGED | GridUpdateMode.SELECTION_CHANGED,
             data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-            fit_columns_on_grid_load=False,  # Don't auto-fit columns
+            fit_columns_on_grid_load=False,
             theme='streamlit',
-            height=400,  # Fixed height to ensure scrolling
-            allow_unsafe_jscode=True  # Enable advanced features
+            height=400,
+            allow_unsafe_jscode=True
         )
+
+        # Handle in-grid updates
+        updated_df = grid_response['data']
+        if not items_df.empty and not updated_df.equals(display_df):
+            # Find differences and update DB
+            for index, row in updated_df.iterrows():
+                # Check for changes in the current row compared to original display_df
+                # This is a bit simplified, ideally we'd tracking specific cell changes
+                original_row = display_df[display_df['id'] == row['id']]
+                if not original_row.empty:
+                    for col in ['name', 'category', 'price', 'price_currency']:
+                        if row[col] != original_row.iloc[0][col]:
+                            update_item_field(row['id'], col, row[col])
+                            st.success(f"Updated {col} for {row['name']}")
+                            st.rerun()
 
         # Get selected rows
         selected_rows = grid_response['selected_rows']
@@ -719,13 +374,38 @@ def calculator_tab():
     subtotal = items_df['final_price'].sum() if not items_df.empty else 0.0
     tax_amount = subtotal * (settings['tax_rate'] / 100)
     total = subtotal + tax_amount
-    summary_col1, summary_col2, summary_col3 = st.columns(3)
+    
+    # Calculate Profit Margin (Total Profit / Total Revenue)
+    # Total Profit = Margin + Marketing Budget (for simplification here)
+    total_margin = items_df['margin'].sum() if not items_df.empty else 0.0
+    avg_margin_pct = (total_margin / subtotal * 100) if subtotal > 0 else 0.0
+
+    summary_col1, summary_col2 = st.columns([2, 1])
+    
     with summary_col1:
-        st.metric("Subtotal", f"${subtotal:.2f}")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Subtotal", f"₹{subtotal:.2f}")
+        m2.metric(f"Tax ({settings['tax_rate']}%)", f"₹{tax_amount:.2f}")
+        m3.metric("Total", f"₹{total:.2f}", delta=f"+₹{tax_amount:.2f}")
+        
     with summary_col2:
-        st.metric(f"Tax ({settings['tax_rate']}%)", f"${tax_amount:.2f}")
-    with summary_col3:
-        st.metric("Total", f"${total:.2f}", delta=f"+${tax_amount:.2f}")
+        # Profit Margin Gauge
+        fig = go.Figure(go.Indicator(
+            mode = "gauge+number",
+            value = avg_margin_pct,
+            title = {'text': "Avg Profit Margin (%)"},
+            gauge = {
+                'axis': {'range': [None, 100]},
+                'bar': {'color': "#1f77b4"},
+                'steps': [
+                    {'range': [0, 30], 'color': "lightgray"},
+                    {'range': [30, 50], 'color': "gray"}],
+                'threshold': {
+                    'line': {'color': "red", 'width': 4},
+                    'thickness': 0.75,
+                    'value': 40}}))
+        fig.update_layout(height=150, margin=dict(l=20, r=20, t=30, b=20))
+        st.plotly_chart(fig, use_container_width=True)
 
 # =============================
 # Database Tab
@@ -736,10 +416,38 @@ def database_tab():
     """
     st.subheader("📊 Database Records")
     items_df = get_all_items()
+    
     if not items_df.empty:
+        # Date filter
+        items_df['created_at_dt'] = pd.to_datetime(items_df['created_at'])
+        min_date = items_df['created_at_dt'].min().date()
+        max_date = items_df['created_at_dt'].max().date()
+        
+        col_date1, col_date2 = st.columns([2, 3])
+        with col_date1:
+            date_range = st.date_input(
+                "Filter by Date Range",
+                value=(min_date, max_date),
+                min_value=min_date,
+                max_value=max_date,
+                key="db_date_filter"
+            )
+            
+        if isinstance(date_range, tuple) and len(date_range) == 2:
+            start_date, end_date = date_range
+            items_df = items_df[
+                (items_df['created_at_dt'].dt.date >= start_date) & 
+                (items_df['created_at_dt'].dt.date <= end_date)
+            ]
+
+        if items_df.empty:
+            st.warning("No records found for the selected date range.")
+            return
+
         st.subheader("Items")
         display_df = items_df[[
             'name',
+            'category',
             'price', 'price_currency',
             'additional_cost', 'additional_cost_currency',
             'shipping', 'shipping_currency',
@@ -752,14 +460,33 @@ def database_tab():
             'created_at']].copy()
         display_df['created_at'] = pd.to_datetime(display_df['created_at']).dt.strftime('%Y-%m-%d %H:%M')
         st.dataframe(display_df, use_container_width=True)
+        
         # Export functionality
-        csv = display_df.to_csv(index=False)
-        st.download_button(
-            label="📥 Download CSV",
-            data=csv,
-            file_name="price_calculator_items.csv",
-            mime="text/csv"
-        )
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            csv = display_df.to_csv(index=False)
+            st.download_button(
+                label="📥 CSV",
+                data=csv,
+                file_name="price_calculator_items.csv",
+                mime="text/csv"
+            )
+        with col2:
+            excel_data = generate_excel_export(display_df)
+            st.download_button(
+                label="📥 Excel",
+                data=excel_data,
+                file_name="price_calculator_items.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        with col3:
+            pdf_data = generate_pdf_export(display_df)
+            st.download_button(
+                label="📥 PDF",
+                data=pdf_data,
+                file_name="price_calculator_items.pdf",
+                mime="application/pdf"
+            )
     else:
         st.info("No items in database")
 
@@ -775,68 +502,117 @@ def analytics_tab():
     if items_df.empty:
         st.info("No data available for analytics. Add some items first!")
         return
+        
+    # Date filter
+    items_df['created_at_dt'] = pd.to_datetime(items_df['created_at'])
+    min_date = items_df['created_at_dt'].min().date()
+    max_date = items_df['created_at_dt'].max().date()
+    
+    col_date1, col_date2 = st.columns([2, 3])
+    with col_date1:
+        date_range = st.date_input(
+            "Filter by Date Range",
+            value=(min_date, max_date),
+            min_value=min_date,
+            max_value=max_date,
+            key="analytics_date_filter"
+        )
+        
+    if isinstance(date_range, tuple) and len(date_range) == 2:
+        start_date, end_date = date_range
+        items_df = items_df[
+            (items_df['created_at_dt'].dt.date >= start_date) & 
+            (items_df['created_at_dt'].dt.date <= end_date)
+        ]
+
+    if items_df.empty:
+        st.warning("No records found for the selected date range.")
+        return
+        
     # Summary metrics
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Total Items", len(items_df))
     with col2:
         total_value = items_df['final_price'].sum()
-        st.metric("Total Value", f"${total_value:.2f}")
+        st.metric("Total Value (₹)", f"₹{total_value:.2f}")
     with col3:
         avg_price = items_df['final_price'].mean()
-        st.metric("Average Price", f"${avg_price:.2f}")
+        st.metric("Avg Price (₹)", f"₹{avg_price:.2f}")
     with col4:
-        avg_margin = items_df['margin'].mean()
-        st.metric("Average Margin", f"{avg_margin:.2f}")
-    # Charts
+        # Avoid division by zero
+        total_revenue = items_df['final_price'].sum()
+        total_margin = items_df['margin'].sum()
+        avg_margin_pct = (total_margin / total_revenue * 100) if total_revenue > 0 else 0.0
+        st.metric("Avg Margin %", f"{avg_margin_pct:.1f}%")
+
+    # Charts Row 1
     col1, col2 = st.columns(2)
     with col1:
-        # Currency distribution
-        currency_counts = items_df['final_currency'].value_counts()
-        fig_currency = px.pie(
-            values=currency_counts.values,
-            names=currency_counts.index,
-            title="Final Price Currency Distribution"
+        # Category distribution
+        cat_counts = items_df['category'].value_counts()
+        fig_cat = px.pie(
+            values=cat_counts.values,
+            names=cat_counts.index,
+            title="Distribution by Category",
+            hole=0.4,
+            color_discrete_sequence=px.colors.qualitative.Pastel
         )
-        st.plotly_chart(fig_currency, use_container_width=True)
-        # Price range distribution
-        fig_price_range = px.histogram(
+        st.plotly_chart(fig_cat, use_container_width=True)
+    
+    with col2:
+        # Price by category bar chart
+        cat_price = items_df.groupby('category')['final_price'].sum().reset_index()
+        fig_price = px.bar(
+            cat_price,
+            x='category',
+            y='final_price',
+            title="Total Price by Category",
+            labels={'final_price': 'Total Price (₹)', 'category': 'Category'},
+            color='category',
+            color_discrete_sequence=px.colors.qualitative.Safe
+        )
+        st.plotly_chart(fig_price, use_container_width=True)
+
+    # Charts Row 2
+    col3, col4 = st.columns(2)
+    with col3:
+        # Price Range Histogram
+        fig_hist = px.histogram(
             items_df,
             x='final_price',
             nbins=10,
-            title="Price Range Distribution"
+            title="Price Range Distribution",
+            labels={'final_price': 'Final Price (₹)'},
+            color_discrete_sequence=['#1f77b4']
         )
-        st.plotly_chart(fig_price_range, use_container_width=True)
-    with col2:
-        # Margin type distribution
-        margin_counts = items_df['margin_type'].value_counts()
-        fig_margin = px.bar(
-            x=margin_counts.index,
-            y=margin_counts.values,
-            title="Margin Type Distribution"
-        )
-        st.plotly_chart(fig_margin, use_container_width=True)
-        # Recent items timeline
+        st.plotly_chart(fig_hist, use_container_width=True)
+    
+    with col4:
+        # Timeline Chart
         items_df['created_at'] = pd.to_datetime(items_df['created_at'])
-        recent_items = items_df.head(10).sort_values('created_at')
+        timeline_df = items_df.sort_values('created_at')
         fig_timeline = px.line(
-            recent_items,
+            timeline_df,
             x='created_at',
             y='final_price',
-            title="Recent Items Timeline"
+            title="Price Trend (Over Time)",
+            markers=True,
+            labels={'final_price': 'Price (₹)', 'created_at': 'Date'}
         )
         st.plotly_chart(fig_timeline, use_container_width=True)
+
     # Detailed statistics
-    st.subheader("📊 Detailed Statistics")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write("**Price Statistics**")
-        price_stats = items_df['final_price'].describe()
-        st.dataframe(price_stats.to_frame(), use_container_width=True)
-    with col2:
-        st.write("**Margin Statistics**")
-        margin_stats = items_df['margin'].describe()
-        st.dataframe(margin_stats.to_frame(), use_container_width=True)
+    with st.expander("📊 View Detailed Statistics", expanded=False):
+        s_col1, s_col2 = st.columns(2)
+        with s_col1:
+            st.write("**Price Statistics (₹)**")
+            price_stats = items_df['final_price'].describe()
+            st.dataframe(price_stats.to_frame(), use_container_width=True)
+        with s_col2:
+            st.write("**Margin Statistics (₹)**")
+            margin_stats = items_df['margin'].describe()
+            st.dataframe(margin_stats.to_frame(), use_container_width=True)
 
 # =============================
 # App Entry Point
