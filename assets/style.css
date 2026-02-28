@@ -156,3 +156,88 @@
     font-weight: 600 !important;
     box-shadow: 0 4px 16px 0 rgba(31, 38, 135, 0.15) !important;
 }
+
+/* ========== Mobile-friendly layout ========== */
+@media (max-width: 768px) {
+    .main-header {
+        font-size: 1.35rem !important;
+        margin-bottom: 1rem !important;
+        padding: 0 0.5rem;
+    }
+    
+    /* Stack form columns on small screens */
+    [data-testid="stHorizontalBlock"] {
+        flex-wrap: wrap !important;
+    }
+    [data-testid="stHorizontalBlock"] > div {
+        min-width: 100% !important;
+        flex: 1 1 100% !important;
+    }
+    
+    /* Larger touch targets for inputs and buttons */
+    .stSelectbox > div, .stNumberInput > div,
+    .stButton > button {
+        min-height: 44px !important;
+    }
+    .stButton > button {
+        padding: 0.6rem 1rem !important;
+        font-size: 1rem !important;
+    }
+    
+    /* Tabs: full-width, easier to tap */
+    .stTabs [data-baseweb="tab-list"] {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        padding: 10px 14px !important;
+        font-size: 0.9rem !important;
+        min-height: 44px !important;
+        flex: 1 1 auto !important;
+    }
+    
+    /* Main content padding */
+    .main .block-container {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+        padding-top: 1rem !important;
+        max-width: 100% !important;
+    }
+    
+    /* Sidebar: scrollable rules, readable text */
+    [data-testid="stSidebar"] {
+        min-width: 280px !important;
+        max-width: 90vw !important;
+    }
+    [data-testid="stSidebar"] .stMarkdown {
+        font-size: 0.9rem;
+    }
+    [data-testid="stSidebar"] ul {
+        padding-left: 1.2rem;
+    }
+    
+    /* AG Grid: horizontal scroll on mobile */
+    .ag-theme-streamlit {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+    }
+    .ag-root-wrapper {
+        min-width: 800px;
+    }
+    
+    /* Reduce hover effects on touch (avoid sticky hover) */
+    .stButton > button:hover,
+    .stTabs [data-baseweb="tab"]:hover {
+        transform: none !important;
+    }
+}
+
+/* Touch-friendly: ensure clickable areas are large enough */
+@media (hover: none) and (pointer: coarse) {
+    .stSelectbox > div, .stNumberInput > div {
+        min-height: 48px !important;
+    }
+    .stButton > button {
+        min-height: 48px !important;
+    }
+}

@@ -54,14 +54,14 @@ def init_database() -> bool:
                 CREATE TABLE IF NOT EXISTS settings (
                     id INTEGER PRIMARY KEY,
                     tax_rate REAL NOT NULL DEFAULT 8.25,
-                    usd_to_inr_rate REAL NOT NULL DEFAULT 83.25,
+                    usd_to_inr_rate REAL NOT NULL DEFAULT 85.0,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
             
             cursor.execute('SELECT COUNT(*) FROM settings')
             if cursor.fetchone()[0] == 0:
-                cursor.execute('INSERT INTO settings (id, tax_rate, usd_to_inr_rate) VALUES (1, 8.25, 83.25)')
+                cursor.execute('INSERT INTO settings (id, tax_rate, usd_to_inr_rate) VALUES (1, 8.25, 85.0)')
             conn.commit()
         return True
     except Exception as e:
@@ -72,16 +72,16 @@ def get_settings() -> Dict[str, float]:
     """Retrieve settings from DB."""
     try:
         with get_db_connection() as conn:
-            if conn is None: return {'tax_rate': 8.25, 'usd_to_inr_rate': 83.25}
+            if conn is None: return {'tax_rate': 8.25, 'usd_to_inr_rate': 85.0}
             df = pd.read_sql_query('SELECT * FROM settings WHERE id = 1', conn)
-            if df.empty: return {'tax_rate': 8.25, 'usd_to_inr_rate': 83.25}
+            if df.empty: return {'tax_rate': 8.25, 'usd_to_inr_rate': 85.0}
             return {
                 'tax_rate': float(df.iloc[0]['tax_rate']),
                 'usd_to_inr_rate': float(df.iloc[0]['usd_to_inr_rate'])
             }
     except Exception as e:
         st.error(f"Error getting settings: {e}")
-        return {'tax_rate': 8.25, 'usd_to_inr_rate': 83.25}
+        return {'tax_rate': 8.25, 'usd_to_inr_rate': 85.0}
 
 def update_settings(tax_rate: float, usd_to_inr_rate: float) -> bool:
     """Update settings in DB."""

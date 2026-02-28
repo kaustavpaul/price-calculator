@@ -4,7 +4,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 from datetime import datetime
 import uuid
 from typing import Dict, List, Optional, Tuple, Any
@@ -27,7 +26,7 @@ st.set_page_config(
     page_title="Price Calculator",
     page_icon="🧮",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="auto"
 )
 
 # =============================
@@ -53,17 +52,17 @@ def main():
         <div style="background:rgba(232,244,253,0.7);border-radius:10px;padding:1rem 1.2rem 1rem 1.2rem;margin-bottom:1rem;border:1px solid #1f77b4;box-shadow:0 2px 8px rgba(31,119,180,0.08);">
             <h4 style="color:#1f77b4;margin-bottom:0.7rem;display:flex;align-items:center;"><span style='font-size:1.3em;margin-right:0.5em;'>📋</span> <span>Price Calculation Rules</span></h4>
             <ul style="padding-left:1.2em;margin-bottom:0.7em;">
-                <li style="margin-bottom:0.5em;"><span style='color:#2ca02c;font-weight:600;'>💸 Marketing Budget:</span> <span style='color:#333;'>10% of Total Price in INR</span></li>
+                <li style="margin-bottom:0.5em;"><span style='color:#2ca02c;font-weight:600;'>💸 Marketing Budget:</span> <span style='color:#333;'>Select <b>5%, 10%, 15%, or 20%</b> (default 10%); applied to (Price + Additional + Shipping + Margin) <b>before</b> adding Delivery Charge.</span></li>
                 <li style="margin-bottom:0.5em;"><span style='color:#ff7f0e;font-weight:600;'>🚚 Delivery Charge in US:</span> <span style='color:#333;'>Select from <b>$5, $10, $15, $20, $25</b> (default <b>$15</b>)</span></li>
-                <li style="margin-bottom:0.5em;"><span style='color:#d62728;font-weight:600;'>📈 Margin:</span>
+                <li style="margin-bottom:0.5em;"><span style='color:#d62728;font-weight:600;'>📈 Margin:</span> <span style='color:#333;'>On <b>Item Price + Additional Cost</b> (INR) only; editable in form.</span>
                     <ul style='margin:0.3em 0 0.3em 1.2em;'>
-                        <li>50% if <b>Total INR ≤ 5000</b></li>
-                        <li>40% if <b>5000 < Total INR ≤ 10000</b></li>
-                        <li>30% if <b>Total INR > 10000</b></li>
+                        <li>50% if <b>≤ 5000</b></li>
+                        <li>40% if <b>5000–10000</b></li>
+                        <li>30% if <b>&gt; 10000</b></li>
                     </ul>
                 </li>
                 <li style="margin-bottom:0.5em;"><span style='color:#9467bd;font-weight:600;'>💵 Final Price in USD:</span> <span style='color:#333;'>Includes all costs, margin, and marketing budget</span></li>
-                <li style="margin-bottom:0.5em;"><span style='color:#1f77b4;font-weight:600;'>💱 Currency Conversion:</span> <span style='color:#333;'>Uses current USD to INR rate</span></li>
+                <li style="margin-bottom:0.5em;"><span style='color:#1f77b4;font-weight:600;'>💱 Currency Conversion:</span> <span style='color:#333;'>Default rate <b>85</b>; use Fetch for latest or Reset to 85.</span></li>
             </ul>
         </div>
         """, unsafe_allow_html=True)
@@ -84,13 +83,20 @@ def main():
         with rate_col2:
             st.write("") # Spacer
             st.write("") # Spacer
-            if st.button("🔄 Fetch", help="Fetch latest rate from API"):
+            fetch_btn = st.button("🔄 Fetch", help="Fetch latest rate from API")
+            reset_btn = st.button("↩️ Reset", help="Reset rate to 85")
+            if fetch_btn:
                 new_rate = fetch_real_time_exchange_rate()
                 if new_rate:
-                    usd_to_inr_rate = new_rate
-                    st.success(f"Fetched: {new_rate}")
+                    if update_settings(settings['tax_rate'], new_rate):
+                        st.success(f"Fetched: {new_rate}")
+                        st.rerun()
                 else:
                     st.error("API failed")
+            if reset_btn:
+                if update_settings(settings['tax_rate'], 85.0):
+                    st.success("Rate reset to 85")
+                    st.rerun()
 
         # Tax rate
         tax_rate = st.number_input(
@@ -140,8 +146,8 @@ def calculator_tab():
     with name_col2:
         category = st.selectbox(
             "Category",
-            ["Electronics", "Apparel", "Home & Kitchen", "Books", "Toys", "Other"],
-            index=5
+            ["Apparel", "Other"],
+            index=0
         )
     
     price_col1, price_col2 = st.columns([3, 1])
@@ -161,6 +167,49 @@ def calculator_tab():
     with add_cost_col2:
         additional_cost_currency = st.selectbox("Currency", ["INR", "USD"], key="additional_cost_currency", index=0)
 
+    # --- Margin: calculated on Item Price + Additional Cost (INR) only; editable ---
+    settings = get_settings()
+    rate = settings['usd_to_inr_rate']
+    base_for_margin_inr = 0.0
+    if purchase_price is not None and purchase_price >= 0:
+        price_inr = purchase_price if purchase_currency == "INR" else purchase_price * rate
+        add_inr = (additional_cost or 0) if additional_cost_currency == "INR" else (additional_cost or 0) * rate
+        base_for_margin_inr = price_inr + add_inr
+    if base_for_margin_inr <= 5000:
+        default_margin_pct = 50
+    elif base_for_margin_inr <= 10000:
+        default_margin_pct = 40
+    else:
+        default_margin_pct = 30
+    default_margin_inr = base_for_margin_inr * default_margin_pct / 100 if base_for_margin_inr else 0.0
+    default_margin_usd = default_margin_inr / rate if rate else 0.0
+
+    margin_col1, margin_col2 = st.columns([3, 1])
+    # Render currency dropdown first (col2) so margin_currency is available for the number input
+    with margin_col2:
+        margin_currency = st.selectbox(
+            "Currency",
+            ["INR", "USD"],
+            index=0,
+            key="margin_currency"
+        )
+    with margin_col1:
+        margin_label = "Margin (₹)" if margin_currency == "INR" else "Margin ($)"
+        margin_default = default_margin_inr if margin_currency == "INR" else default_margin_usd
+        margin_step = 10.0 if margin_currency == "INR" else 1.0
+        margin_value = st.number_input(
+            margin_label,
+            min_value=0.0,
+            value=margin_default,
+            step=margin_step,
+            format="%.2f",
+            key="margin_input",
+            help="Calculated from Item Price + Additional Cost. Editable."
+        )
+
+    # Single margin in INR for all calculations and DB storage
+    margin_inr = margin_value if margin_currency == "INR" else (margin_value * rate if rate else 0.0)
+
     ship_us_col1, ship_us_col2 = st.columns([3, 1])
     with ship_us_col1:
         shipping_cost = st.selectbox(
@@ -172,7 +221,16 @@ def calculator_tab():
     with ship_us_col2:
         shipping_currency = st.selectbox("Currency", ["INR", "USD"], key="shipping_us_currency", index=0)
 
-    # --- Delivery Charge in US (display after shipping) ---
+    # --- Marketing Budget % (after Shipping, before Delivery) ---
+    marketing_budget_pct = st.selectbox(
+        "Marketing Budget (%)",
+        options=[5, 10, 15, 20],
+        index=1,
+        format_func=lambda x: f"{x}%",
+        help="Applied to (Price + Additional + Shipping + Margin); then Delivery Charge is added."
+    )
+
+    # --- Delivery Charge in US ---
     delivery_us_col1, delivery_us_col2 = st.columns([3, 1])
     with delivery_us_col1:
         delivery_charge_us = st.selectbox(
@@ -183,42 +241,36 @@ def calculator_tab():
         )
     with delivery_us_col2:
         st.markdown("<span style='color: #1f77b4; font-weight: 600;'>USD</span>", unsafe_allow_html=True)
-    settings = get_settings()
+
     show_calculations = item_name and purchase_price is not None and purchase_price > 0
     if show_calculations:
-        total_inr = 0.0
+        # Costs before delivery (INR): price + additional + shipping; then + margin
+        costs_before_delivery = 0.0
         if purchase_currency == "INR" and purchase_price is not None:
-            total_inr += purchase_price
+            costs_before_delivery += purchase_price
+        elif purchase_price is not None:
+            costs_before_delivery += purchase_price * rate
         if additional_cost_currency == "INR" and additional_cost is not None:
-            total_inr += additional_cost
+            costs_before_delivery += additional_cost
+        elif additional_cost is not None:
+            costs_before_delivery += additional_cost * rate
         if shipping_currency == "INR" and shipping_cost is not None:
-            total_inr += shipping_cost
-        # Add Delivery Charge in US converted to INR
-        if delivery_charge_us is not None:
-            total_inr += delivery_charge_us * settings['usd_to_inr_rate']
-        usd_equiv = total_inr / settings['usd_to_inr_rate'] if settings['usd_to_inr_rate'] else 0.0
+            costs_before_delivery += shipping_cost
+        elif shipping_cost is not None:
+            costs_before_delivery += shipping_cost * rate
 
-        # Marketing Budget: 10% of Total Price in INR
-        marketing_budget = total_inr * 0.10
+        base_with_margin = costs_before_delivery + margin_inr
+        marketing_budget = base_with_margin * (marketing_budget_pct / 100)
+        delivery_inr = (delivery_charge_us or 0) * rate
+        final_inr_with_budget_and_margin = base_with_margin + marketing_budget + delivery_inr
+        final_price_usd = final_inr_with_budget_and_margin / rate if rate else 0.0
 
-        # Margin logic
-        if total_inr <= 5000:
-            margin_percent = 50
-        elif total_inr > 5000 and total_inr <= 10000:
-            margin_percent = 40
-        elif total_inr > 10000:
-            margin_percent = 30
-        else:
-            margin_percent = 0
-        margin_value = total_inr * margin_percent / 100
-
-        # Final Price in INR including Marketing Budget and Margin
-        final_inr_with_budget_and_margin = total_inr + marketing_budget + margin_value
-        final_price_usd = final_inr_with_budget_and_margin / settings['usd_to_inr_rate'] if settings['usd_to_inr_rate'] else 0.0
-
-        st.info(f"Total Price in INR: ₹{total_inr:.2f}")
-        st.info(f"Marketing Budget (10%): ₹{marketing_budget:.2f}")
-        st.info(f"Margin: {margin_percent}% (₹{margin_value:.2f})")
+        margin_pct_display = round(margin_inr / base_for_margin_inr * 100) if base_for_margin_inr else 0
+        margin_usd_preview = margin_inr / rate if rate else 0.0
+        st.info(f"Costs before delivery (INR): ₹{costs_before_delivery:.2f}")
+        st.info(f"Margin: ₹{margin_inr:.2f} INR | ${margin_usd_preview:.2f} USD" + (f" (~{margin_pct_display}% of price+additional)" if base_for_margin_inr else ""))
+        st.info(f"Marketing Budget ({marketing_budget_pct}%): ₹{marketing_budget:.2f}")
+        st.info(f"Delivery (INR): ₹{delivery_inr:.2f}")
         st.success(f"Final Price in USD: ${final_price_usd:.2f} (₹{final_inr_with_budget_and_margin:.2f})")
 
     # --- Form for submission only ---
@@ -228,6 +280,31 @@ def calculator_tab():
             if not item_name or purchase_price is None or purchase_price <= 0:
                 st.error("Please enter a valid item name and purchase price!")
             else:
+                # Recompute for submission: marketing before delivery
+                rate_s = get_settings()['usd_to_inr_rate']
+                costs_before_delivery_s = 0.0
+                if purchase_currency == "INR":
+                    costs_before_delivery_s += purchase_price
+                else:
+                    costs_before_delivery_s += purchase_price * rate_s
+                if additional_cost_currency == "INR":
+                    costs_before_delivery_s += (additional_cost or 0)
+                else:
+                    costs_before_delivery_s += (additional_cost or 0) * rate_s
+                if shipping_currency == "INR":
+                    costs_before_delivery_s += (shipping_cost or 0)
+                else:
+                    costs_before_delivery_s += (shipping_cost or 0) * rate_s
+
+                base_with_margin_s = costs_before_delivery_s + margin_inr
+                marketing_budget_s = base_with_margin_s * (marketing_budget_pct / 100)
+                delivery_inr_s = (delivery_charge_us or 0) * rate_s
+                final_inr_s = base_with_margin_s + marketing_budget_s + delivery_inr_s
+                final_price_usd_s = final_inr_s / rate_s if rate_s else 0.0
+                margin_pct_s = round(margin_inr / base_for_margin_inr * 100) if base_for_margin_inr else 0
+                # Total costs (INR) for display: all cost components including delivery
+                total_inr_s = costs_before_delivery_s + delivery_inr_s
+
                 item_data = {
                     'id': str(uuid.uuid4()),
                     'name': item_name,
@@ -239,15 +316,15 @@ def calculator_tab():
                     'shipping': shipping_cost,
                     'shipping_currency': shipping_currency,
                     'delivery_charge_us': delivery_charge_us,
-                    'marketing_budget': marketing_budget,
+                    'marketing_budget': marketing_budget_s,
                     'import_cost': 0.0,
                     'import_currency': 'INR',
-                    'margin': margin_value,
-                    'margin_type': f"{margin_percent}%",
+                    'margin': margin_inr,
+                    'margin_type': f"{margin_pct_s}%" if base_for_margin_inr else "INR",
                     'final_currency': 'INR',
-                    'final_price': total_inr,
-                    'final_price_usd': final_price_usd,
-                    'final_inr_with_budget_and_margin': final_inr_with_budget_and_margin
+                    'final_price': total_inr_s,
+                    'final_price_usd': final_price_usd_s,
+                    'final_inr_with_budget_and_margin': final_inr_s
                 }
                 if add_item(item_data):
                     st.success(f"Item '{item_name}' added successfully!")
@@ -276,6 +353,8 @@ def calculator_tab():
             'final_price_usd',
             'final_price',
             'created_at']].copy()
+        rate_grid = get_settings()['usd_to_inr_rate']
+        display_df['margin_usd'] = (display_df['margin'] / rate_grid).round(2) if rate_grid else 0.0
         display_df['created_at'] = pd.to_datetime(display_df['created_at']).dt.strftime('%Y-%m-%d %H:%M')
         # Configure AG Grid
         gb = GridOptionsBuilder.from_dataframe(display_df)
@@ -286,7 +365,7 @@ def calculator_tab():
         gb.configure_column("name", header_name="Name", width=150, editable=True, checkboxSelection=True)
         gb.configure_column("category", header_name="Category", width=120, editable=True, 
                             cellEditor='agSelectCellEditor', 
-                            cellEditorParams={'values': ["Electronics", "Apparel", "Home & Kitchen", "Books", "Toys", "Other"]})
+                            cellEditorParams={'values': ["Apparel", "Other"]})
         gb.configure_column("price", header_name="Purchase Price", type=["numericColumn"], precision=2, width=100, editable=True)
         gb.configure_column("price_currency", header_name="Currency", width=90, editable=True,
                             cellEditor='agSelectCellEditor', cellEditorParams={'values': ["INR", "USD"]})
@@ -296,10 +375,11 @@ def calculator_tab():
         gb.configure_column("shipping_currency", header_name="Ship Curr.", width=90)
         gb.configure_column("delivery_charge_us", header_name="Delivery Charge in US ($)", type=["numericColumn"], precision=2, width=120)
         gb.configure_column("marketing_budget", header_name="Marketing Budget (₹)", type=["numericColumn"], precision=2, width=120)
-        gb.configure_column("margin", header_name="Margin (₹)", type=["numericColumn"], precision=2, width=120)
+        gb.configure_column("margin", header_name="Margin (₹) INR", type=["numericColumn"], precision=2, width=110)
+        gb.configure_column("margin_usd", header_name="Margin ($) USD", type=["numericColumn"], precision=2, width=110)
         gb.configure_column("final_inr_with_budget_and_margin", header_name="Final INR (with Budget & Margin)", type=["numericColumn"], precision=2, width=150)
         gb.configure_column("final_price_usd", header_name="Final Price in USD", type=["numericColumn"], precision=2, width=150)
-        gb.configure_column("final_price", header_name="Total Price in INR", type=["numericColumn"], precision=2, width=130)
+        gb.configure_column("final_price", header_name="Total Costs (INR)", type=["numericColumn"], precision=2, width=130)
         gb.configure_column("created_at", header_name="Created At", width=130)
         
         # Configure grid properties
@@ -367,46 +447,6 @@ def calculator_tab():
                 st.success(f"Deleted {len(selected_ids)} selected item(s)!")
                 st.rerun()
 
-    st.divider()
-    # --- Summary Section ---
-    st.subheader("💰 Summary")
-    settings = get_settings()
-    subtotal = items_df['final_price'].sum() if not items_df.empty else 0.0
-    tax_amount = subtotal * (settings['tax_rate'] / 100)
-    total = subtotal + tax_amount
-    
-    # Calculate Profit Margin (Total Profit / Total Revenue)
-    # Total Profit = Margin + Marketing Budget (for simplification here)
-    total_margin = items_df['margin'].sum() if not items_df.empty else 0.0
-    avg_margin_pct = (total_margin / subtotal * 100) if subtotal > 0 else 0.0
-
-    summary_col1, summary_col2 = st.columns([2, 1])
-    
-    with summary_col1:
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Subtotal", f"₹{subtotal:.2f}")
-        m2.metric(f"Tax ({settings['tax_rate']}%)", f"₹{tax_amount:.2f}")
-        m3.metric("Total", f"₹{total:.2f}", delta=f"+₹{tax_amount:.2f}")
-        
-    with summary_col2:
-        # Profit Margin Gauge
-        fig = go.Figure(go.Indicator(
-            mode = "gauge+number",
-            value = avg_margin_pct,
-            title = {'text': "Avg Profit Margin (%)"},
-            gauge = {
-                'axis': {'range': [None, 100]},
-                'bar': {'color': "#1f77b4"},
-                'steps': [
-                    {'range': [0, 30], 'color': "lightgray"},
-                    {'range': [30, 50], 'color': "gray"}],
-                'threshold': {
-                    'line': {'color': "red", 'width': 4},
-                    'thickness': 0.75,
-                    'value': 40}}))
-        fig.update_layout(height=150, margin=dict(l=20, r=20, t=30, b=20))
-        st.plotly_chart(fig, use_container_width=True)
-
 # =============================
 # Database Tab
 # =============================
@@ -458,6 +498,12 @@ def database_tab():
             'final_price_usd',
             'final_price',
             'created_at']].copy()
+        rate_db = get_settings()['usd_to_inr_rate']
+        display_df['margin_usd'] = (display_df['margin'] / rate_db).round(2) if rate_db else 0.0
+        # Show margin_usd next to margin
+        cols = [c for c in display_df.columns if c != 'margin_usd']
+        cols.insert(cols.index('margin') + 1, 'margin_usd')
+        display_df = display_df[cols]
         display_df['created_at'] = pd.to_datetime(display_df['created_at']).dt.strftime('%Y-%m-%d %H:%M')
         st.dataframe(display_df, use_container_width=True)
         
@@ -529,19 +575,18 @@ def analytics_tab():
         st.warning("No records found for the selected date range.")
         return
         
-    # Summary metrics
+    # Summary metrics (use final selling price for value/revenue)
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Total Items", len(items_df))
     with col2:
-        total_value = items_df['final_price'].sum()
+        total_value = items_df['final_inr_with_budget_and_margin'].sum()
         st.metric("Total Value (₹)", f"₹{total_value:.2f}")
     with col3:
-        avg_price = items_df['final_price'].mean()
+        avg_price = items_df['final_inr_with_budget_and_margin'].mean()
         st.metric("Avg Price (₹)", f"₹{avg_price:.2f}")
     with col4:
-        # Avoid division by zero
-        total_revenue = items_df['final_price'].sum()
+        total_revenue = items_df['final_inr_with_budget_and_margin'].sum()
         total_margin = items_df['margin'].sum()
         avg_margin_pct = (total_margin / total_revenue * 100) if total_revenue > 0 else 0.0
         st.metric("Avg Margin %", f"{avg_margin_pct:.1f}%")
@@ -561,14 +606,14 @@ def analytics_tab():
         st.plotly_chart(fig_cat, use_container_width=True)
     
     with col2:
-        # Price by category bar chart
-        cat_price = items_df.groupby('category')['final_price'].sum().reset_index()
+        # Price by category bar chart (final selling price)
+        cat_price = items_df.groupby('category')['final_inr_with_budget_and_margin'].sum().reset_index()
         fig_price = px.bar(
             cat_price,
             x='category',
-            y='final_price',
+            y='final_inr_with_budget_and_margin',
             title="Total Price by Category",
-            labels={'final_price': 'Total Price (₹)', 'category': 'Category'},
+            labels={'final_inr_with_budget_and_margin': 'Total Price (₹)', 'category': 'Category'},
             color='category',
             color_discrete_sequence=px.colors.qualitative.Safe
         )
@@ -577,37 +622,37 @@ def analytics_tab():
     # Charts Row 2
     col3, col4 = st.columns(2)
     with col3:
-        # Price Range Histogram
+        # Price Range Histogram (final selling price)
         fig_hist = px.histogram(
             items_df,
-            x='final_price',
+            x='final_inr_with_budget_and_margin',
             nbins=10,
             title="Price Range Distribution",
-            labels={'final_price': 'Final Price (₹)'},
+            labels={'final_inr_with_budget_and_margin': 'Final Price (₹)'},
             color_discrete_sequence=['#1f77b4']
         )
         st.plotly_chart(fig_hist, use_container_width=True)
     
     with col4:
-        # Timeline Chart
+        # Timeline Chart (final selling price)
         items_df['created_at'] = pd.to_datetime(items_df['created_at'])
         timeline_df = items_df.sort_values('created_at')
         fig_timeline = px.line(
             timeline_df,
             x='created_at',
-            y='final_price',
+            y='final_inr_with_budget_and_margin',
             title="Price Trend (Over Time)",
             markers=True,
-            labels={'final_price': 'Price (₹)', 'created_at': 'Date'}
+            labels={'final_inr_with_budget_and_margin': 'Price (₹)', 'created_at': 'Date'}
         )
         st.plotly_chart(fig_timeline, use_container_width=True)
 
-    # Detailed statistics
+    # Detailed statistics (final selling price and margin)
     with st.expander("📊 View Detailed Statistics", expanded=False):
         s_col1, s_col2 = st.columns(2)
         with s_col1:
-            st.write("**Price Statistics (₹)**")
-            price_stats = items_df['final_price'].describe()
+            st.write("**Final Price Statistics (₹)**")
+            price_stats = items_df['final_inr_with_budget_and_margin'].describe()
             st.dataframe(price_stats.to_frame(), use_container_width=True)
         with s_col2:
             st.write("**Margin Statistics (₹)**")
