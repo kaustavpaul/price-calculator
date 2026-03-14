@@ -54,7 +54,7 @@ def main():
             <ul style="padding-left:1.2em;margin-bottom:0.7em;">
                 <li style="margin-bottom:0.5em;"><span style='color:#2ca02c;font-weight:600;'>💸 Marketing Budget:</span> <span style='color:#333;'>Select <b>5%, 10%, 15%, or 20%</b> (default 10%); applied to (Price + Additional + Shipping + Margin) <b>before</b> adding Delivery Charge.</span></li>
                 <li style="margin-bottom:0.5em;"><span style='color:#ff7f0e;font-weight:600;'>🚚 Delivery Charge in US:</span> <span style='color:#333;'>Select from <b>$5, $10, $15, $20, $25</b> (default <b>$15</b>)</span></li>
-                <li style="margin-bottom:0.5em;"><span style='color:#d62728;font-weight:600;'>📈 Margin:</span> <span style='color:#333;'>On <b>Item Price + Additional Cost</b> (INR) only; editable in form.</span>
+                <li style="margin-bottom:0.5em;"><span style='color:#d62728;font-weight:600;'>📈 Margin:</span> <span style='color:#333;'><b>Percentage</b> on Item Price + Additional Cost (INR); editable (default from tier below).</span>
                     <ul style='margin:0.3em 0 0.3em 1.2em;'>
                         <li>50% if <b>≤ 5000</b></li>
                         <li>40% if <b>5000–10000</b></li>
@@ -167,7 +167,7 @@ def calculator_tab():
     with add_cost_col2:
         additional_cost_currency = st.selectbox("Currency", ["INR", "USD"], key="additional_cost_currency", index=0)
 
-    # --- Margin: calculated on Item Price + Additional Cost (INR) only; editable ---
+    # --- Margin (%): calculated on Item Price + Additional Cost (INR); editable percentage ---
     settings = get_settings()
     rate = settings['usd_to_inr_rate']
     base_for_margin_inr = 0.0
@@ -181,34 +181,29 @@ def calculator_tab():
         default_margin_pct = 40
     else:
         default_margin_pct = 30
-    default_margin_inr = base_for_margin_inr * default_margin_pct / 100 if base_for_margin_inr else 0.0
-    default_margin_usd = default_margin_inr / rate if rate else 0.0
 
     margin_col1, margin_col2 = st.columns([3, 1])
-    # Render currency dropdown first (col2) so margin_currency is available for the number input
-    with margin_col2:
-        margin_currency = st.selectbox(
-            "Currency",
-            ["INR", "USD"],
-            index=0,
-            key="margin_currency"
-        )
     with margin_col1:
-        margin_label = "Margin (₹)" if margin_currency == "INR" else "Margin ($)"
-        margin_default = default_margin_inr if margin_currency == "INR" else default_margin_usd
-        margin_step = 10.0 if margin_currency == "INR" else 1.0
-        margin_value = st.number_input(
-            margin_label,
+        margin_pct = st.number_input(
+            "Margin (%)",
             min_value=0.0,
-            value=margin_default,
-            step=margin_step,
-            format="%.2f",
-            key="margin_input",
-            help="Calculated from Item Price + Additional Cost. Editable."
+            max_value=100.0,
+            value=float(default_margin_pct),
+            step=5.0,
+            format="%.0f",
+            key="margin_pct_input",
+            help="Percentage on (Purchase Price + Additional Cost) in INR. Default from tier: 50% if ≤₹5k, 40% if ≤₹10k, 30% if >₹10k."
+        )
+    with margin_col2:
+        margin_inr_display = base_for_margin_inr * (margin_pct / 100) if base_for_margin_inr else 0.0
+        margin_usd_display = margin_inr_display / rate if rate else 0.0
+        st.markdown(
+            "<span style='color: #666;'>≈ ₹%.2f INR</span><br><span style='color: #1f77b4; font-size: 0.9em;'>≈ $%.2f USD</span>" % (margin_inr_display, margin_usd_display),
+            unsafe_allow_html=True
         )
 
-    # Single margin in INR for all calculations and DB storage
-    margin_inr = margin_value if margin_currency == "INR" else (margin_value * rate if rate else 0.0)
+    # Margin amount in INR for all calculations and DB storage (from percentage)
+    margin_inr = base_for_margin_inr * (margin_pct / 100) if base_for_margin_inr else 0.0
 
     ship_us_col1, ship_us_col2 = st.columns([3, 1])
     with ship_us_col1:
@@ -265,10 +260,9 @@ def calculator_tab():
         final_inr_with_budget_and_margin = base_with_margin + marketing_budget + delivery_inr
         final_price_usd = final_inr_with_budget_and_margin / rate if rate else 0.0
 
-        margin_pct_display = round(margin_inr / base_for_margin_inr * 100) if base_for_margin_inr else 0
         margin_usd_preview = margin_inr / rate if rate else 0.0
         st.info(f"Costs before delivery (INR): ₹{costs_before_delivery:.2f}")
-        st.info(f"Margin: ₹{margin_inr:.2f} INR | ${margin_usd_preview:.2f} USD" + (f" (~{margin_pct_display}% of price+additional)" if base_for_margin_inr else ""))
+        st.info(f"Margin: {margin_pct:.0f}% (₹{margin_inr:.2f} INR | ${margin_usd_preview:.2f} USD)")
         st.info(f"Marketing Budget ({marketing_budget_pct}%): ₹{marketing_budget:.2f}")
         st.info(f"Delivery (INR): ₹{delivery_inr:.2f}")
         st.success(f"Final Price in USD: ${final_price_usd:.2f} (₹{final_inr_with_budget_and_margin:.2f})")
@@ -301,7 +295,7 @@ def calculator_tab():
                 delivery_inr_s = (delivery_charge_us or 0) * rate_s
                 final_inr_s = base_with_margin_s + marketing_budget_s + delivery_inr_s
                 final_price_usd_s = final_inr_s / rate_s if rate_s else 0.0
-                margin_pct_s = round(margin_inr / base_for_margin_inr * 100) if base_for_margin_inr else 0
+                margin_pct_s = int(margin_pct)
                 # Total costs (INR) for display: all cost components including delivery
                 total_inr_s = costs_before_delivery_s + delivery_inr_s
 
@@ -320,7 +314,7 @@ def calculator_tab():
                     'import_cost': 0.0,
                     'import_currency': 'INR',
                     'margin': margin_inr,
-                    'margin_type': f"{margin_pct_s}%" if base_for_margin_inr else "INR",
+                    'margin_type': f"{margin_pct_s}%",
                     'final_currency': 'INR',
                     'final_price': total_inr_s,
                     'final_price_usd': final_price_usd_s,
@@ -348,6 +342,7 @@ def calculator_tab():
             'shipping', 'shipping_currency',
             'delivery_charge_us',
             'marketing_budget',
+            'margin_type',
             'margin',
             'final_inr_with_budget_and_margin',
             'final_price_usd',
@@ -375,6 +370,7 @@ def calculator_tab():
         gb.configure_column("shipping_currency", header_name="Ship Curr.", width=90)
         gb.configure_column("delivery_charge_us", header_name="Delivery Charge in US ($)", type=["numericColumn"], precision=2, width=120)
         gb.configure_column("marketing_budget", header_name="Marketing Budget (₹)", type=["numericColumn"], precision=2, width=120)
+        gb.configure_column("margin_type", header_name="Margin (%)", width=95)
         gb.configure_column("margin", header_name="Margin (₹) INR", type=["numericColumn"], precision=2, width=110)
         gb.configure_column("margin_usd", header_name="Margin ($) USD", type=["numericColumn"], precision=2, width=110)
         gb.configure_column("final_inr_with_budget_and_margin", header_name="Final INR (with Budget & Margin)", type=["numericColumn"], precision=2, width=150)
@@ -493,6 +489,7 @@ def database_tab():
             'shipping', 'shipping_currency',
             'delivery_charge_us',
             'marketing_budget',
+            'margin_type',
             'margin',
             'final_inr_with_budget_and_margin',
             'final_price_usd',
@@ -500,7 +497,7 @@ def database_tab():
             'created_at']].copy()
         rate_db = get_settings()['usd_to_inr_rate']
         display_df['margin_usd'] = (display_df['margin'] / rate_db).round(2) if rate_db else 0.0
-        # Show margin_usd next to margin
+        # Order: margin_type (%), then margin (₹), then margin_usd
         cols = [c for c in display_df.columns if c != 'margin_usd']
         cols.insert(cols.index('margin') + 1, 'margin_usd')
         display_df = display_df[cols]
